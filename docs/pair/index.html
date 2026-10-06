@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#14141c" />
+    <title>DamnedCloud — associa il telefono</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+        background: #14141c; color: #e6e6f0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: 24px;
+      }
+      .card {
+        width: 100%; max-width: 420px; background: #1e1e2e; border: 1px solid #33334a;
+        border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px;
+      }
+      .logo { font-family: ui-monospace, monospace; font-size: 22px; font-weight: 700; color: #00ffff; text-align: center; letter-spacing: 1px; }
+      p { margin: 0; font-size: 14px; line-height: 1.5; color: #9a9ab0; }
+      ol { margin: 0; padding-left: 18px; color: #9a9ab0; font-size: 13px; line-height: 1.7; }
+      a.btn, button.btn {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        width: 100%; padding: 14px; border-radius: 10px; border: none;
+        font-size: 15px; font-weight: 700; text-decoration: none; cursor: pointer;
+      }
+      .primary { background: #00ffff; color: #08282a; }
+      .ghost { background: #262638; color: #e6e6f0; border: 1px solid #33334a; }
+      .note { font-size: 12px; color: #6b6b82; text-align: center; }
+      .hidden { display: none; }
+      code { font-family: ui-monospace, monospace; font-size: 12px; color: #00ffff; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="logo">DAMNEDCLOUD</div>
+      <p>Associa questo telefono al tuo <strong>DamnedIDE</strong> per vedere e controllare il lavoro da remoto.</p>
+
+      <a id="open" class="btn primary hidden" href="#">Apri DamnedCloud e associa</a>
+      <a id="download" class="btn ghost" href="https://github.com/DamnedMe/DamnedCloud/releases/latest/download/DamnedCloud.apk">
+        Scarica l'APK
+      </a>
+
+      <ol>
+        <li>Installa <strong>Tailscale</strong> su telefono e PC e accedi con lo stesso account.</li>
+        <li>Installa questa app (se non è già presente).</li>
+        <li>Torna qui e premi <strong>“Apri DamnedCloud e associa”</strong>.</li>
+      </ol>
+
+      <div id="manual" class="hidden">
+        <p>Se il pulsante non apre l'app, copia il codice e incollalo in <strong>Associazione manuale</strong> dentro l'app:</p>
+        <p><code id="code"></code></p>
+      </div>
+
+      <div class="note">Il traffico viaggia dentro la rete privata Tailscale (WireGuard).</div>
+    </div>
+
+    <script>
+      (function () {
+        var payload = (location.hash || '').replace(/^#/, '')
+        var openBtn = document.getElementById('open')
+        var manual = document.getElementById('manual')
+        var codeEl = document.getElementById('code')
+        var apkUrl = 'https://github.com/DamnedMe/DamnedCloud/releases/latest/download/DamnedCloud.apk'
+
+        if (!payload) {
+          codeEl.textContent = 'Nessun codice nel link: apri il QR da DamnedIDE.'
+          manual.classList.remove('hidden')
+          return
+        }
+
+        codeEl.textContent = payload
+        manual.classList.remove('hidden')
+
+        var deepLink = 'damnedcloud://pair?d=' + payload
+
+        // Android: intent:// opens the app if installed, otherwise falls back to the APK.
+        var ua = navigator.userAgent.toLowerCase()
+        if (ua.indexOf('android') >= 0) {
+          openBtn.href =
+            'intent://pair?d=' + payload +
+            '#Intent;scheme=damnedcloud;package=com.damned.cloud;' +
+            'S.browser_fallback_url=' + encodeURIComponent(apkUrl) + ';end'
+        } else {
+          openBtn.href = deepLink
+        }
+        openBtn.classList.remove('hidden')
+      })()
+    </script>
+  </body>
+</html>
