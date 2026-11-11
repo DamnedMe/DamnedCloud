@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Folder, File as FileIcon, ChevronRight, Save, ArrowLeft, Loader2, Code2, RefreshCw } from 'lucide-react'
 import { useRemoteStore } from '../lib/store'
+import { useBridgeRefresh } from './bridgeHelpers'
 
 interface Entry {
   name: string
@@ -27,23 +28,37 @@ export function EditorScreen() {
   const [content, setContent] = useState('')
   const [original, setOriginal] = useState('')
   const [loading, setLoading] = useState(false)
+  const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // the textarea only speaks \n: the file's own line ending is restored on save
+  const eol = useRef<'\n' | '\r\n'>('\n')
+  // a read that lands after the user moved on must not fill the buffer of another file
+  const openSeq = useRef(0)
+
+  const closeFile = () => {
+    openSeq.current++
+    setFile(null)
+    setContent('')
+    setOriginal('')
+    setFileLoading(false)
+  }
 
   useEffect(() => {
     setDir(root)
-    setFile(null)
+    closeFile()
   }, [root])
 
-  const loadDir = useCallback(async () => {
+  // quiet: a refresh pushed by the bridge keeps the error of the last action on screen
+  const loadDir = useCallback(async (quiet = false) => {
     if (!dir) return
     setLoading(true)
-    setError(null)
+    if (!quiet) setError(null)
     try {
       const list = await send<Entry[]>('fs.tree', { root: dir })
       list.sort((a, b) => (a.isDirectory === b.isDirectory ? a.name.localeCompare(b.name) : a.isDirectory ? -1 : 1))
       setEntries(list)
     } catch (e) {
-      setError((e as Error).message)
+      if (!quiet) setError((e as Error).message)
     } finally {
       setLoading(false)
     }
@@ -53,25 +68,38 @@ export function EditorScreen() {
     void loadDir()
   }, [loadDir])
 
+  useBridgeRefresh(['fs.changed'], [dir], () => void loadDir(true))
+
   const openFile = async (path: string) => {
+    const seq = ++openSeq.current
     setFile(path)
     setError(null)
-    setContent('caricamento…')
+    setContent('')
+    setOriginal('')
+    setFileLoading(true)
     try {
       const res = await send<{ content: string }>('fs.read', { file: path })
-      setContent(res.content)
-      setOriginal(res.content)
+      if (seq !== openSeq.current) return
+      eol.current = res.content.includes('\r\n') ? '\r\n' : '\n'
+      const text = res.content.replace(/\r\n/g, '\n')
+      setContent(text)
+      setOriginal(text)
     } catch (e) {
-      setContent('')
+      if (seq !== openSeq.current) return
+      // never an editable empty buffer: saving it would blank the file on the desktop
+      setFile(null)
       setError((e as Error).message)
+    } finally {
+      if (seq === openSeq.current) setFileLoading(false)
     }
   }
 
   const save = async () => {
-    if (!file) return
+    if (!file || fileLoading) return
     setError(null)
     try {
-      await send('editor.save', { file, content })
+      // ponytail: a file with mixed endings comes back all CRLF
+      await send('editor.save', { file, content: eol.current === '\r\n' ? content.replace(/\n/g, '\r\n') : content })
       setOriginal(content)
     } catch (e) {
       setError((e as Error).message)
@@ -105,7 +133,7 @@ export function EditorScreen() {
               <button
                 className="btn small"
                 style={{ border: 'none', background: 'none', padding: '4px 6px' }}
-                onClick={() => { setDir(c.path); setFile(null) }}
+                onClick={() => { setDir(c.path); closeFile() }}
               >
                 {c.label}
               </button>
@@ -123,16 +151,24 @@ export function EditorScreen() {
         <div className="card">
           <div className="row between">
             <div className="row" style={{ minWidth: 0 }}>
-              <button className="btn small" onClick={() => { setFile(null); setContent(''); setOriginal('') }}>
+              <button className="btn small" onClick={closeFile}>
                 <ArrowLeft size={13} />
               </button>
+              {fileLoading && <Loader2 size={13} className="spinner" />}
               <span className="muted mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>{file}</span>
             </div>
-            <button className="btn small primary" onClick={() => void save()} disabled={content === original}>
+            <button className="btn small primary" onClick={() => void save()} disabled={fileLoading || content === original}>
               <Save size={13} /> salva
             </button>
           </div>
-          <textarea className="code" value={content} spellCheck={false} onChange={(e) => setContent(e.target.value)} />
+          <textarea
+            className="code"
+            value={content}
+            spellCheck={false}
+            disabled={fileLoading}
+            placeholder={fileLoading ? 'caricamento…' : undefined}
+            onChange={(e) => setContent(e.target.value)}
+          />
         </div>
       ) : (
         <div className="list">

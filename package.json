@@ -1,7 +1,7 @@
 {
   "name": "damnedcloud",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Client mobile per il controllo remoto di DamnedIDE",
   "type": "module",
   "scripts": {

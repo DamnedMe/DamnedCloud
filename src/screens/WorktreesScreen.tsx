@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Boxes, RefreshCw, FolderOpen, GitBranch, Check, Loader2 } from 'lucide-react'
-import { useRemoteStore } from '../lib/store'
+import { Boxes, RefreshCw, FolderOpen, GitBranch, Check, Loader2, Trash2 } from 'lucide-react'
+import { useRemoteStore, sendConfirmed } from '../lib/store'
+import { isDeclined, samePath, useBridgeRefresh } from './bridgeHelpers'
+
+/** WorktreeService.remove answers a refusal or a locked folder instead of throwing. */
+interface RemoveResult {
+  ok: boolean
+  warning?: string
+  error?: string
+}
 
 interface WorktreeEntry {
   path: string
@@ -16,19 +24,22 @@ export function WorktreesScreen() {
   const [repoInput, setRepoInput] = useState('')
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const repoPath = workspace?.selectedWorktree || workspace?.repoPath || null
 
-  const load = useCallback(async () => {
+  // quiet: a refresh pushed by the bridge keeps the error of the last action on screen
+  const load = useCallback(async (quiet = false) => {
     const target = workspace?.repoPath
     if (!target) return
     setLoading(true)
-    setError(null)
+    if (!quiet) setError(null)
     try {
       setWorktrees(await send<WorktreeEntry[]>('worktree.list', { repoPath: target }))
     } catch (e) {
-      setError((e as Error).message)
+      if (!quiet) setError((e as Error).message)
     } finally {
       setLoading(false)
     }
@@ -37,6 +48,27 @@ export function WorktreesScreen() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // file edits do not change the worktree list: git events only
+  useBridgeRefresh(['git.changed'], [workspace?.repoPath], () => void load(true))
+
+  const remove = async (entry: WorktreeEntry) => {
+    const mainRepo = workspace?.repoPath
+    if (!mainRepo) return
+    setRemoving(entry.path)
+    setNotice(null)
+    try {
+      // the bridge asks to confirm, then refuses the main checkout and the open folder itself
+      const res = await sendConfirmed<RemoveResult>('worktree.remove', { repoPath: mainRepo, worktreePath: entry.path })
+      await load()
+      if (res && !res.ok) setError(res.error || 'worktree non rimosso')
+      else if (res?.warning) setNotice(res.warning)
+    } catch (e) {
+      if (!isDeclined(e)) setError((e as Error).message)
+    } finally {
+      setRemoving(null)
+    }
+  }
 
   const openRepo = async () => {
     setError(null)
@@ -87,12 +119,29 @@ export function WorktreesScreen() {
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {notice && <div className="worktrees-notice">{notice}</div>}
 
       <div className="list">
-        {worktrees.map((w) => {
+        {worktrees.map((w, index) => {
           const active = repoPath === w.path
+          // git lists the main checkout first; the open worktree would vanish under the desktop
+          const removable = index > 0 && !w.bare && !samePath(w.path, repoPath) && !samePath(w.path, workspace?.repoPath)
           return (
-            <button key={w.path} className={`list-item${active ? ' active' : ''}`} onClick={() => void select(w)}>
+            // a div with button semantics: a real <button> cannot contain the remove button
+            <div
+              key={w.path}
+              role="button"
+              tabIndex={0}
+              aria-current={active || undefined}
+              className={`list-item${active ? ' active' : ''}`}
+              onClick={() => void select(w)}
+              onKeyDown={(e) => {
+                // keys pressed on the nested remove button are its own
+                if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+                e.preventDefault()
+                void select(w)
+              }}
+            >
               <GitBranch size={15} color={active ? 'var(--accent)' : 'var(--text-muted)'} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="row between">
@@ -104,7 +153,17 @@ export function WorktreesScreen() {
                 </div>
               </div>
               {w.detached && <span className="badge">detached</span>}
-            </button>
+              {removable && (
+                <button
+                  className="btn small danger"
+                  title="rimuovi worktree"
+                  disabled={removing !== null}
+                  onClick={(e) => { e.stopPropagation(); void remove(w) }}
+                >
+                  {removing === w.path ? <Loader2 size={13} className="spinner" /> : <Trash2 size={13} />}
+                </button>
+              )}
+            </div>
           )
         })}
         {!loading && worktrees.length === 0 && workspace?.repoPath && (

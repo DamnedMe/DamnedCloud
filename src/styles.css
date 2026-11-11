@@ -331,3 +331,49 @@ pre.diff {
   padding: 8px 10px;
   font-size: 12px;
 }
+
+/* ChangesScreen: outcome of pull / push */
+.changes-notice {
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+/* WorktreesScreen: a removal that left something behind (locked folder) */
+.worktrees-notice {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+/* Connection state strip above the tabs (offline / reconnecting / pairing). */
+.conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.conn-banner.info {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.conn-banner .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.conn-banner .spinner {
+  flex: none;
+}

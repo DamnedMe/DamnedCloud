@@ -1,6 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Database, Play, Loader2, RefreshCw, Table2, ChevronRight, ArrowLeft } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Database, Play, Loader2, RefreshCw, Table2, ChevronRight, ArrowLeft, Square } from 'lucide-react'
 import { useRemoteStore, sendConfirmed } from '../lib/store'
+import { isDeclined } from './bridgeHelpers'
+
+/** Rows per result set the bridge sends back: a phone cannot render 250k rows anyway. */
+const MAX_ROWS = 1000
+
+// same keywords and comment stripping as isMutatingSql in the bridge (commands.ts), which asks
+// to confirm these: only they report affected rows (a SELECT's count is not a modification)
+const MUTATING_SQL = /\b(DROP|TRUNCATE|ALTER|DELETE|UPDATE|INSERT|MERGE|EXEC|EXECUTE|CREATE|GRANT|REVOKE|BACKUP|RESTORE|DBCC)\b/i
+
+function isMutatingSql(query: string): boolean {
+  return MUTATING_SQL.test(query.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' '))
+}
 
 interface Conn {
   id: string
@@ -14,6 +26,8 @@ interface QueryResult {
   queryId: string
   results: { columns: string[]; rows: Record<string, unknown>[]; rowCount: number }[]
   totalRowCount: number
+  truncated?: boolean
+  maxRows?: number
   elapsedMs: number
   rowsAffected: number[]
   canceled: boolean
@@ -29,8 +43,26 @@ export function SqlScreen() {
   const [tables, setTables] = useState<string[]>([])
   const [query, setQuery] = useState('SELECT TOP 100 * FROM ')
   const [result, setResult] = useState<QueryResult | null>(null)
-  const [running, setRunning] = useState(false)
+  const [resultMutating, setResultMutating] = useState(false)
+  const [runningId, setRunningId] = useState<string | null>(null)
+  const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // databases and tables share one list: a late answer for the previous one is dropped
+  const listSeq = useRef(0)
+  const running = runningId !== null
+
+  const loadList = async (fetchList: () => Promise<string[]>, apply: (list: string[]) => void) => {
+    const seq = ++listSeq.current
+    setListLoading(true)
+    try {
+      const list = await fetchList()
+      if (seq === listSeq.current) apply(list)
+    } catch (e) {
+      if (seq === listSeq.current) setError((e as Error).message)
+    } finally {
+      if (seq === listSeq.current) setListLoading(false)
+    }
+  }
 
   const loadConnections = useCallback(async () => {
     setError(null)
@@ -52,23 +84,20 @@ export function SqlScreen() {
     setDatabases([])
     setTables([])
     setDatabase(null)
-    void (async () => {
-      try {
-        setDatabases(await send<string[]>('sql.databases', { connectionId }))
-      } catch (e) {
-        setError((e as Error).message)
-      }
-    })()
+    void loadList(() => send<string[]>('sql.databases', { connectionId }), setDatabases)
   }, [connectionId, send])
 
-  const openDatabase = async (db: string) => {
+  const openDatabase = (db: string) => {
     setDatabase(db)
+    setTables([])
     setError(null)
-    try {
-      setTables(await send<string[]>('sql.tables', { connectionId, database: db }))
-    } catch (e) {
-      setError((e as Error).message)
-    }
+    void loadList(() => send<string[]>('sql.tables', { connectionId, database: db }), setTables)
+  }
+
+  const closeDatabase = () => {
+    listSeq.current++
+    setListLoading(false)
+    setDatabase(null)
   }
 
   const insertTable = (table: string) => {
@@ -76,15 +105,30 @@ export function SqlScreen() {
   }
 
   const run = async () => {
-    if (!connectionId || !query.trim()) return
-    setRunning(true)
+    if (!connectionId || !query.trim() || running) return
+    // our own id, so 'annulla' can name the running query. The bridge keeps it only if it matches
+    // /^remote_[\w-]{1,64}$/ (the prefix keeps the phone off the desktop's own queries), otherwise
+    // it picks its own and the cancel finds nothing to stop
+    const queryId = `remote_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+    setRunningId(queryId)
     setError(null)
     try {
-      setResult(await sendConfirmed<QueryResult>('sql.query', { connectionId, query, database }))
+      const res = await sendConfirmed<QueryResult>('sql.query', { connectionId, query, database, maxRows: MAX_ROWS, queryId })
+      setResult(res)
+      setResultMutating(isMutatingSql(query))
+    } catch (e) {
+      if (!isDeclined(e)) setError((e as Error).message)
+    } finally {
+      setRunningId(null)
+    }
+  }
+
+  const cancel = async () => {
+    if (!runningId) return
+    try {
+      await send('sql.cancel', { queryId: runningId })
     } catch (e) {
       setError((e as Error).message)
-    } finally {
-      setRunning(false)
     }
   }
 
@@ -122,7 +166,7 @@ export function SqlScreen() {
             <div className="row">
               {database ? (
                 <>
-                  <button className="btn small" onClick={() => setDatabase(null)}><ArrowLeft size={13} /></button>
+                  <button className="btn small" onClick={closeDatabase}><ArrowLeft size={13} /></button>
                   <span className="badge">{database}</span>
                 </>
               ) : (
@@ -131,9 +175,19 @@ export function SqlScreen() {
             </div>
           </div>
           <div className="list">
+            {listLoading && (
+              <div className="muted row" style={{ justifyContent: 'center', padding: 12 }}>
+                <Loader2 size={14} className="spinner" /> caricamento…
+              </div>
+            )}
+            {!listLoading && (database ? tables : databases).length === 0 && (
+              <div className="muted" style={{ textAlign: 'center', padding: 12 }}>
+                {database ? 'nessuna tabella' : 'nessun database'}
+              </div>
+            )}
             {!database
               ? databases.map((db) => (
-                <button key={db} className="list-item" onClick={() => void openDatabase(db)}>
+                <button key={db} className="list-item" onClick={() => openDatabase(db)}>
                   <Database size={15} color="var(--accent)" />
                   <span style={{ flex: 1 }}>{db}</span>
                   <ChevronRight size={15} color="var(--text-muted)" />
@@ -152,21 +206,44 @@ export function SqlScreen() {
       <div className="card">
         <label className="field">
           Query
-          <textarea className="code" style={{ minHeight: 120 }} value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+          <textarea
+            className="code"
+            style={{ minHeight: 120 }}
+            value={query}
+            spellCheck={false}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault()
+                void run()
+              }
+            }}
+          />
         </label>
         <div className="row between">
-          <span className="muted mono" style={{ fontSize: 11 }}>F5 per eseguire</span>
-          <button className="btn primary" onClick={() => void run()} disabled={running || !connectionId}>
-            {running ? <Loader2 size={15} className="spinner" /> : <Play size={15} />} esegui
-          </button>
+          <span className="muted mono" style={{ fontSize: 11 }}>Ctrl+Invio per eseguire</span>
+          <div className="row">
+            {/* ponytail: shown to every bridge, but the released 0.1.0 ignores queryId and answers
+                sql.cancel with ok, so there 'annulla' silently stops nothing; gate it on
+                system.info ideVersion if 0.1.0 desktops linger */}
+            {running && (
+              <button className="btn danger" onClick={() => void cancel()}>
+                <Square size={15} /> annulla
+              </button>
+            )}
+            <button className="btn primary" onClick={() => void run()} disabled={running || !connectionId}>
+              {running ? <Loader2 size={15} className="spinner" /> : <Play size={15} />} esegui
+            </button>
+          </div>
         </div>
       </div>
 
       {result && (
         <div className="card">
           <div className="muted mono" style={{ fontSize: 11 }}>
-            {result.totalRowCount} righe · {result.elapsedMs} ms
-            {result.rowsAffected?.length ? ` · ${result.rowsAffected.join(', ')} righe modificate` : ''}
+            {result.canceled ? 'query annullata' : `${result.totalRowCount} righe`} · {result.elapsedMs} ms
+            {result.truncated ? ` · troncate a ${result.maxRows ?? MAX_ROWS} per risultato` : ''}
+            {resultMutating && result.rowsAffected?.length ? ` · ${result.rowsAffected.join(', ')} righe modificate` : ''}
           </div>
           {result.results.map((rs, idx) => (
             <div key={idx} style={{ overflowX: 'auto' }}>

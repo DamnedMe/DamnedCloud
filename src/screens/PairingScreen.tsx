@@ -1,24 +1,17 @@
 import { useState } from 'react'
-import { QrCode, Link2, Loader2, RefreshCw } from 'lucide-react'
+import { QrCode, Link2, Loader2, RefreshCw, MonitorCheck } from 'lucide-react'
 import { useRemoteStore } from '../lib/store'
 
 export function PairingScreen() {
-  const { pairWithCode, connect, error, status, detail, token } = useRemoteStore()
+  const { pairWithCode, connect, error, status, detail, token, pairing, pairingCode } = useRemoteStore()
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const pair = async () => {
     if (!code.trim()) return
-    setBusy(true)
     setLocalError(null)
-    try {
-      await pairWithCode(code)
-    } catch (e) {
-      setLocalError((e as Error).message || 'associazione fallita')
-    } finally {
-      setBusy(false)
-    }
+    await pairWithCode(code).catch(() => { /* the store puts the failure in `error`, shown below */ })
   }
 
   const reconnect = async () => {
@@ -42,13 +35,28 @@ export function PairingScreen() {
         Controllo remoto di DamnedIDE
       </div>
 
+      {pairing && (
+        <div className="card">
+          <div className="row">
+            <MonitorCheck size={18} color="var(--accent)" />
+            <strong>Conferma l’associazione su DamnedIDE</strong>
+          </div>
+          <div className="row">
+            <span className="spinner" />
+            <span className="muted">
+              {pairingCode ? `Conferma sul PC: codice ${pairingCode}` : 'In attesa della conferma sul PC…'}
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div className="row">
           <QrCode size={18} color="var(--accent)" />
           <strong>1. Installa e associa</strong>
         </div>
         <div className="muted">
-          Apri DamnedIDE su PC → Impostazioni → Mobile → “associa telefono”, poi scansiona il QR col telefono.
+          Apri DamnedIDE su PC → Impostazioni → Accesso remoto → attiva → genera QR, poi scansiona il QR col telefono.
           Se DamnedCloud è già installato, il QR apre l’app e completa l’associazione.
         </div>
         <div className="muted">
@@ -71,14 +79,14 @@ export function PairingScreen() {
             style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
           />
         </label>
-        <button className="btn primary" onClick={() => void pair()} disabled={busy || !code.trim()}>
-          {busy ? <Loader2 size={15} className="spinner" /> : <QrCode size={15} />}
+        <button className="btn primary" onClick={() => void pair()} disabled={pairing || busy || !code.trim()}>
+          {pairing ? <Loader2 size={15} className="spinner" /> : <QrCode size={15} />}
           Associa
         </button>
       </div>
 
       {token && (
-        <button className="btn" onClick={() => void reconnect()} disabled={busy}>
+        <button className="btn" onClick={() => void reconnect()} disabled={busy || pairing}>
           {busy ? <Loader2 size={15} className="spinner" /> : <RefreshCw size={15} />}
           Riconnetti al desktop
         </button>

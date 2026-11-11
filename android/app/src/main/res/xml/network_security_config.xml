@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The bridge listens on plain ws://<LAN IP or Tailscale host>:8765 (Tailscale already encrypts the
+     link with WireGuard) and Android 9+ blocks cleartext by default, WebView WebSockets included.
+     The host is whatever the pairing QR says, so it cannot be listed in a domain-config: cleartext is
+     allowed app-wide, with the usual system CAs for wss:// and https://. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

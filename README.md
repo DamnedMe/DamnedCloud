@@ -49,6 +49,24 @@ npm run android:apk   # -> android/app/build/outputs/apk/debug/app-debug.apk
 In CI l'APK viene compilato e allegato alla Release come `DamnedCloud.apk`
 (workflow `.github/workflows/android.yml`).
 
+## Installazione / aggiornamento
+
+`versionName` e `versionCode` vengono dalla `version` di `package.json` (1.2.3 → 10203).
+Android installa un aggiornamento sopra l'app solo se l'APK è firmato con la **stessa chiave**:
+la CI firma con i secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Senza secret usa una chiave di debug nuova a ogni
+build (warning nel log): bisogna disinstallare l'app e rifare l'associazione. Anche il primo
+passaggio alla chiave stabile richiede una disinstallazione.
+
+```bash
+# una volta sola; conserva il file e la password (con PKCS12 la password della chiave è la stessa)
+keytool -genkeypair -keystore damnedcloud.jks -alias damnedcloud -keyalg RSA -keysize 4096 -validity 36500
+base64 -w0 damnedcloud.jks   # -> secret ANDROID_KEYSTORE_BASE64
+```
+
+Per una build locale installabile sopra quella della CI: `ANDROID_KEYSTORE_FILE` (percorso del
+`.jks`) più le stesse variabili, come env o in `~/.gradle/gradle.properties`.
+
 ## Associazione (un solo QR)
 
 1. In DamnedIDE: **Impostazioni → Mobile → associa telefono**.

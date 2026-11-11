@@ -36,7 +36,9 @@ export class RemoteConnection {
   private readonly pending = new Map<string, Resolver>()
   private readonly topics = new Map<RemoteTopic, Set<(data: unknown) => void>>()
   private readonly stateListeners = new Set<(state: ConnState, detail?: string) => void>()
-  private readonly closeListeners = new Set<() => void>()
+  private readonly closeListeners = new Set<(code: number) => void>()
+  /** Rejects the in-flight connect() promise; cleared once that socket opens or is released. */
+  private abortConnect: ((error: Error) => void) | null = null
 
   get isOpen(): boolean {
     return !!this.ws && this.ws.readyState === WebSocket.OPEN
@@ -47,7 +49,8 @@ export class RemoteConnection {
     return () => this.stateListeners.delete(listener)
   }
 
-  onClose(listener: () => void): () => void {
+  /** Fires when an established connection drops on its own (not on close()); `code` is the WebSocket close code. */
+  onClose(listener: (code: number) => void): () => void {
     this.closeListeners.add(listener)
     return () => this.closeListeners.delete(listener)
   }
@@ -63,7 +66,6 @@ export class RemoteConnection {
     this.emitState('connecting')
     return new Promise<void>((resolve, reject) => {
       const url = `${info.tls ? 'wss' : 'ws'}://${info.host}:${info.port}`
-      let settled = false
       let socket: WebSocket
       try {
         socket = new WebSocket(url)
@@ -73,58 +75,72 @@ export class RemoteConnection {
         return
       }
       this.ws = socket
+      let opened = false
       const timer = setTimeout(() => {
-        if (settled) return
-        settled = true
-        try {
-          socket.close()
-        } catch {
-          /* ignore */
-        }
+        if (this.ws !== socket || opened) return
+        this.release('timeout di connessione')
         this.emitState('error', 'timeout')
-        reject(new Error('timeout di connessione'))
       }, timeoutMs)
-
-      socket.onopen = () => {
-        if (settled) return
-        settled = true
+      this.abortConnect = (error) => {
         clearTimeout(timer)
+        reject(error)
+      }
+
+      // Every handler checks it still owns this.ws: a replaced socket must not
+      // touch the state, the pending requests or the topics of its successor.
+      socket.onopen = () => {
+        if (this.ws !== socket) return
+        opened = true
+        clearTimeout(timer)
+        this.abortConnect = null
         this.emitState('open')
         resolve()
       }
       socket.onerror = () => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
+        // After open, the close event that follows does the cleanup.
+        if (this.ws !== socket || opened) return
+        this.release('connessione al bridge fallita')
         this.emitState('error', 'connessione fallita')
-        reject(new Error('connessione al bridge fallita'))
       }
-      socket.onclose = () => {
-        clearTimeout(timer)
-        this.ws = null
-        for (const [, resolver] of this.pending) resolver.reject(new Error('connessione chiusa'))
-        this.pending.clear()
+      socket.onclose = (event) => {
+        if (this.ws !== socket) return
+        this.release('connessione chiusa')
         this.emitState('closed')
-        for (const listener of this.closeListeners) listener()
-        if (!settled) {
-          settled = true
-          reject(new Error('connessione chiusa'))
-        }
+        // A socket that never opened already rejected connect(); only a dropped session is news.
+        if (opened) for (const listener of this.closeListeners) listener(event.code)
       }
-      socket.onmessage = (event) => this.onMessage(event.data)
+      socket.onmessage = (event) => {
+        if (this.ws === socket) this.onMessage(event.data)
+      }
     })
   }
 
   close(): void {
-    if (this.ws) {
+    this.release('connessione chiusa')
+    this.emitState('idle')
+  }
+
+  /**
+   * Drops the current socket: detaches its handlers first (so its late events
+   * are ignored and no close listener fires), rejects its pending requests and
+   * an unfinished connect(), then closes it. Never leaves a dead socket in this.ws.
+   */
+  private release(reason: string): void {
+    const socket = this.ws
+    const abort = this.abortConnect
+    this.ws = null
+    this.abortConnect = null
+    if (socket) {
+      socket.onopen = socket.onerror = socket.onclose = socket.onmessage = null
       try {
-        this.ws.close()
+        socket.close()
       } catch {
         /* ignore */
       }
-      this.ws = null
     }
-    this.emitState('idle')
+    for (const [, resolver] of this.pending) resolver.reject(new Error(reason))
+    this.pending.clear()
+    abort?.(new Error(reason))
   }
 
   request<T = unknown>(cmd: string, args?: unknown): Promise<T> {

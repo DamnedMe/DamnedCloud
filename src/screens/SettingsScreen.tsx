@@ -2,23 +2,36 @@ import { useEffect, useState } from 'react'
 import { Smartphone, RefreshCw, LogOut, ShieldCheck, Server, Info } from 'lucide-react'
 import { useRemoteStore } from '../lib/store'
 import { SCOPE_LABELS } from '../shared/remote/protocol'
+import { version as appVersion } from '../../package.json'
 
 export function SettingsScreen() {
-  const { device, endpoint, status, workspace, connect, disconnect, send } = useRemoteStore()
+  const { device, endpoint, status, workspace, connect, forget, send } = useRemoteStore()
   const [info, setInfo] = useState<{ ide: string; ideVersion: string; protocolVersion: number; platform: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Refetch on every (re)authentication: the IDE may have been updated or restarted meanwhile.
   useEffect(() => {
+    if (status !== 'open') return
     void send<typeof info>('system.info').then(setInfo).catch(() => { /* offline */ })
-  }, [send])
+  }, [status, device, send])
 
   const reconnect = async () => {
     setBusy(true)
+    setError(null)
     try {
       await connect()
+    } catch (e) {
+      setError((e as Error).message || 'connessione fallita')
     } finally {
       setBusy(false)
     }
+  }
+
+  const unpair = async () => {
+    if (!window.confirm('Disassociare questo telefono da DamnedIDE? Per riusarlo servirà un nuovo QR.')) return
+    setBusy(true)
+    await forget()
   }
 
   return (
@@ -57,7 +70,7 @@ export function SettingsScreen() {
           ))}
           {!device?.scopes?.length && <span className="muted">nessun permesso</span>}
         </div>
-        <div className="muted">I permessi si modificano dall’IDE (Impostazioni → Mobile).</div>
+        <div className="muted">I permessi si modificano dall’IDE (Impostazioni → Accesso remoto).</div>
       </div>
 
       <div className="card">
@@ -76,20 +89,20 @@ export function SettingsScreen() {
         <button className="btn" onClick={() => void reconnect()} disabled={busy}>
           <RefreshCw size={15} /> riconnetti
         </button>
+        {error && <div className="error-banner">{error}</div>}
       </div>
 
-      {info && (
-        <div className="card">
-          <div className="row">
-            <Info size={15} color="var(--accent)" />
-            <strong>Desktop</strong>
-          </div>
-          <div className="row between"><span className="muted">IDE</span><span className="mono" style={{ fontSize: 12 }}>{info.ide} {info.ideVersion}</span></div>
-          <div className="row between"><span className="muted">Protocollo</span><span className="mono" style={{ fontSize: 12 }}>v{info.protocolVersion}</span></div>
+      <div className="card">
+        <div className="row">
+          <Info size={15} color="var(--accent)" />
+          <strong>Versioni</strong>
         </div>
-      )}
+        <div className="row between"><span className="muted">App</span><span className="mono" style={{ fontSize: 12 }}>DamnedCloud {appVersion}</span></div>
+        <div className="row between"><span className="muted">IDE</span><span className="mono" style={{ fontSize: 12 }}>{info ? `${info.ide} ${info.ideVersion}` : '—'}</span></div>
+        <div className="row between"><span className="muted">Protocollo</span><span className="mono" style={{ fontSize: 12 }}>{info ? `v${info.protocolVersion}` : '—'}</span></div>
+      </div>
 
-      <button className="btn danger" onClick={disconnect}>
+      <button className="btn danger" onClick={() => void unpair()} disabled={busy}>
         <LogOut size={15} /> disassocia e esci
       </button>
     </>
