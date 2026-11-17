@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Folder, File as FileIcon, ChevronRight, Save, ArrowLeft, Loader2, Code2, RefreshCw } from 'lucide-react'
 import { useRemoteStore } from '../lib/store'
+import { useNavStore } from '../lib/nav'
 import { useBridgeRefresh } from './bridgeHelpers'
 
 interface Entry {
@@ -18,9 +19,26 @@ function joinPath(dir: string, name: string): string {
   return dir.endsWith(s) ? `${dir}${name}` : `${dir}${s}${name}`
 }
 
+const parentOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '')
+
+/** Character offset where `line` (1-based) starts; past the end: the last line. */
+function lineOffset(text: string, line: number): number {
+  let pos = 0
+  for (let i = 1; i < line; i++) {
+    const nl = text.indexOf('\n', pos)
+    if (nl < 0) break
+    pos = nl + 1
+  }
+  return pos
+}
+
+const lineHeight = (el: HTMLElement) => parseFloat(getComputedStyle(el).lineHeight) || 18
+
 export function EditorScreen() {
   const workspace = useRemoteStore((s) => s.workspace)
   const send = useRemoteStore((s) => s.send)
+  const editorTarget = useNavStore((s) => s.editorTarget)
+  const clearEditorTarget = useNavStore((s) => s.clearEditorTarget)
   const root = workspace?.selectedWorktree || workspace?.repoPath || null
   const [dir, setDir] = useState<string | null>(null)
   const [entries, setEntries] = useState<Entry[]>([])
@@ -30,10 +48,17 @@ export function EditorScreen() {
   const [loading, setLoading] = useState(false)
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** line opened from the diff inspector: scrolled to and highlighted */
+  const [mark, setMark] = useState<number | null>(null)
   // the textarea only speaks \n: the file's own line ending is restored on save
   const eol = useRef<'\n' | '\r\n'>('\n')
   // a read that lands after the user moved on must not fill the buffer of another file
   const openSeq = useRef(0)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  const gutterRef = useRef<HTMLPreElement>(null)
+  const bandRef = useRef<HTMLDivElement>(null)
+  const markRef = useRef(mark)
+  markRef.current = mark
 
   const closeFile = () => {
     openSeq.current++
@@ -41,6 +66,7 @@ export function EditorScreen() {
     setContent('')
     setOriginal('')
     setFileLoading(false)
+    setMark(null)
   }
 
   useEffect(() => {
@@ -70,12 +96,13 @@ export function EditorScreen() {
 
   useBridgeRefresh(['fs.changed'], [dir], () => void loadDir(true))
 
-  const openFile = async (path: string) => {
+  const openFile = async (path: string, line: number | null = null) => {
     const seq = ++openSeq.current
     setFile(path)
     setError(null)
     setContent('')
     setOriginal('')
+    setMark(line)
     setFileLoading(true)
     try {
       const res = await send<{ content: string }>('fs.read', { file: path })
@@ -94,6 +121,36 @@ export function EditorScreen() {
     }
   }
 
+  // "editor" in the diff inspector (this screen mounts with the tab, so no buffer to lose):
+  // after the root effect above, so its folder wins
+  useEffect(() => {
+    if (!editorTarget || !root) return
+    clearEditorTarget()
+    setDir(parentOf(editorTarget.file) || root)
+    void openFile(editorTarget.file, editorTarget.line)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorTarget, root])
+
+  /** Gutter and highlight band follow the textarea scroll (no re-render). */
+  const syncScroll = useCallback(() => {
+    const ta = taRef.current
+    if (!ta) return
+    if (gutterRef.current) gutterRef.current.scrollTop = ta.scrollTop
+    if (bandRef.current && markRef.current) {
+      bandRef.current.style.transform = `translateY(${(markRef.current - 1) * lineHeight(ta) - ta.scrollTop}px)`
+    }
+  }, [])
+
+  // the file just loaded: scroll the marked line to the upper third, caret at its start
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta || fileLoading || !mark) return
+    ta.scrollTop = Math.max(0, (mark - 1) * lineHeight(ta) - ta.clientHeight / 3)
+    const pos = lineOffset(ta.value, mark)
+    ta.setSelectionRange(pos, pos)
+    syncScroll()
+  }, [file, fileLoading, mark, syncScroll])
+
   const save = async () => {
     if (!file || fileLoading) return
     setError(null)
@@ -105,6 +162,9 @@ export function EditorScreen() {
       setError((e as Error).message)
     }
   }
+
+  const lineCount = useMemo(() => content.split('\n').length, [content])
+  const gutter = useMemo(() => Array.from({ length: lineCount }, (_, i) => i + 1).join('\n'), [lineCount])
 
   const crumbs = useMemo(() => {
     if (!dir || !root) return []
@@ -120,27 +180,23 @@ export function EditorScreen() {
   }, [dir, root])
 
   if (!root) {
-    return <div className="muted" style={{ textAlign: 'center', padding: 24 }}>Apri un repository dalla sezione Worktree.</div>
+    return <div className="empty-state">Apri un repository dalla sezione Worktree.</div>
   }
+
+  const dirty = content !== original
 
   return (
     <>
-      <div className="row between">
-        <div className="row" style={{ minWidth: 0, flex: 1, overflowX: 'auto' }}>
+      <div className="screen-head">
+        <div className="crumbs">
           {crumbs.map((c, i) => (
-            <span key={c.path} className="row" style={{ gap: 2, flexShrink: 0 }}>
+            <span key={c.path} className="crumb">
               {i > 0 && <ChevronRight size={12} color="var(--text-muted)" />}
-              <button
-                className="btn small"
-                style={{ border: 'none', background: 'none', padding: '4px 6px' }}
-                onClick={() => { setDir(c.path); closeFile() }}
-              >
-                {c.label}
-              </button>
+              <button onClick={() => { setDir(c.path); closeFile() }}>{c.label}</button>
             </span>
           ))}
         </div>
-        <button className="btn small" onClick={() => void loadDir()} disabled={loading}>
+        <button className="btn small" onClick={() => void loadDir()} disabled={loading} aria-label="aggiorna">
           {loading ? <Loader2 size={13} className="spinner" /> : <RefreshCw size={13} />}
         </button>
       </div>
@@ -148,32 +204,43 @@ export function EditorScreen() {
       {error && <div className="error-banner">{error}</div>}
 
       {file ? (
-        <div className="card">
+        <div className="card editor-card">
           <div className="row between">
             <div className="row" style={{ minWidth: 0 }}>
-              <button className="btn small" onClick={closeFile}>
-                <ArrowLeft size={13} />
+              <button className="icon-btn" onClick={closeFile} aria-label="chiudi file">
+                <ArrowLeft size={15} />
               </button>
               {fileLoading && <Loader2 size={13} className="spinner" />}
-              <span className="muted mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>{file}</span>
+              <span className="file-title">
+                <span className="name">{dirty ? '● ' : ''}{file.slice(parentOf(file).length + 1)}</span>
+                {mark && <span className="dir">riga {mark}</span>}
+              </span>
             </div>
-            <button className="btn small primary" onClick={() => void save()} disabled={fileLoading || content === original}>
+            <button className="btn small primary" onClick={() => void save()} disabled={fileLoading || !dirty}>
               <Save size={13} /> salva
             </button>
           </div>
-          <textarea
-            className="code"
-            value={content}
-            spellCheck={false}
-            disabled={fileLoading}
-            placeholder={fileLoading ? 'caricamento…' : undefined}
-            onChange={(e) => setContent(e.target.value)}
-          />
+          <div className="code-wrap">
+            <pre ref={gutterRef} className="gutter" aria-hidden>{gutter}</pre>
+            {mark && !fileLoading && <div ref={bandRef} className="line-band" />}
+            <textarea
+              ref={taRef}
+              className="code"
+              value={content}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              disabled={fileLoading}
+              placeholder={fileLoading ? 'caricamento…' : undefined}
+              onScroll={syncScroll}
+              onChange={(e) => setContent(e.target.value)}
+            />
+          </div>
         </div>
       ) : (
         <div className="list">
           {dir !== root && (
-            <button className="list-item" onClick={() => { setDir(dir!.replace(/[\\/][^\\/]*$/, '') || root) }}>
+            <button className="list-item" onClick={() => { setDir(parentOf(dir!) || root) }}>
               <ArrowLeft size={15} /> ..
             </button>
           )}

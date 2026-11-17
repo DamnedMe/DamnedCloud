@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
-import { Boxes, GitBranch, Code2, Database, Settings, RefreshCw, WifiOff } from 'lucide-react'
+import { Boxes, GitBranch, Rocket, Code2, Database, Settings, RefreshCw, WifiOff } from 'lucide-react'
 import { useRemoteStore } from './lib/store'
+import { useNavStore, type Tab } from './lib/nav'
+import { applyTheme } from './lib/theme'
 import { PairingScreen } from './screens/PairingScreen'
 import { WorktreesScreen } from './screens/WorktreesScreen'
 import { ChangesScreen } from './screens/ChangesScreen'
+import { ReleaseScreen } from './screens/ReleaseScreen'
 import { EditorScreen } from './screens/EditorScreen'
 import { SqlScreen } from './screens/SqlScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 
-type Tab = 'worktrees' | 'changes' | 'editor' | 'sql' | 'settings'
-
 const TABS: { id: Tab; label: string; icon: typeof Boxes }[] = [
   { id: 'worktrees', label: 'Worktree', icon: Boxes },
   { id: 'changes', label: 'Modifiche', icon: GitBranch },
+  { id: 'release', label: 'Rilascio', icon: Rocket },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'sql', label: 'SQL', icon: Database },
   { id: 'settings', label: 'Impostazioni', icon: Settings }
@@ -32,7 +34,9 @@ export default function App() {
   const connect = useRemoteStore((s) => s.connect)
   const resume = useRemoteStore((s) => s.resume)
   const openPairingLink = useRemoteStore((s) => s.openPairingLink)
-  const [tab, setTab] = useState<Tab>('worktrees')
+  const theme = useRemoteStore((s) => s.workspace?.theme)
+  const tab = useNavStore((s) => s.tab)
+  const setTab = useNavStore((s) => s.setTab)
   const tabRef = useRef(tab)
   tabRef.current = tab
   // Errors of a deep-link pairing or a manual reconnect while the tabs are shown
@@ -71,6 +75,9 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Looks like the IDE: its theme and primary color, the last one seen while offline.
+  useEffect(() => applyTheme(theme), [theme?.mode, theme?.accent])
 
   // A new session supersedes whatever the banner was reporting.
   useEffect(() => setBannerError(null), [token])
@@ -137,6 +144,7 @@ export default function App() {
         )}
         {tab === 'worktrees' && <WorktreesScreen />}
         {tab === 'changes' && <ChangesScreen />}
+        {tab === 'release' && <ReleaseScreen />}
         {tab === 'editor' && <EditorScreen />}
         {tab === 'sql' && <SqlScreen />}
         {tab === 'settings' && <SettingsScreen />}

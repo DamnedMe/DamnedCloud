@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Boxes, RefreshCw, FolderOpen, GitBranch, Check, Loader2, Trash2 } from 'lucide-react'
+import { Boxes, RefreshCw, FolderOpen, FolderGit2, GitBranch, Check, Loader2, Trash2, History } from 'lucide-react'
 import { useRemoteStore, sendConfirmed } from '../lib/store'
+import { dirOf, fileNameOf } from '../shared/changeGroups'
 import { isDeclined, samePath, useBridgeRefresh } from './bridgeHelpers'
 
 /** WorktreeService.remove answers a refusal or a locked folder instead of throwing. */
@@ -25,6 +26,9 @@ export function WorktreesScreen() {
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
+  /** "cambia" open: recent repositories of the IDE + a typed path */
+  const [picking, setPicking] = useState(false)
+  const [opening, setOpening] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -70,12 +74,17 @@ export function WorktreesScreen() {
     }
   }
 
-  const openRepo = async () => {
+  const openRepo = async (path: string) => {
     setError(null)
+    setOpening(path)
     try {
-      await send('workspace.setRepo', { repoPath: repoInput.trim() })
+      await send('workspace.setRepo', { repoPath: path })
+      setPicking(false)
+      setRepoInput('')
     } catch (e) {
       setError((e as Error).message)
+    } finally {
+      setOpening(null)
     }
   }
 
@@ -88,6 +97,10 @@ export function WorktreesScreen() {
     }
   }
 
+  // the IDE's recents (newest first; absent on bridges up to IDE 0.1.2), minus the open one
+  const recents = (workspace?.recentRepos ?? []).filter((p) => !samePath(p, workspace?.repoPath))
+  const showPicker = picking || !workspace?.repoPath
+
   return (
     <>
       <div className="card">
@@ -96,24 +109,49 @@ export function WorktreesScreen() {
             <FolderOpen size={16} color="var(--accent)" />
             <strong>Repository</strong>
           </div>
-          <button className="btn small" onClick={() => void load()} disabled={loading || !workspace?.repoPath}>
-            {loading ? <Loader2 size={13} className="spinner" /> : <RefreshCw size={13} />}
-          </button>
-        </div>
-        <div className="muted mono" style={{ wordBreak: 'break-all' }}>
-          {workspace?.repoPath || 'nessun repository aperto sul desktop'}
-        </div>
-        {!workspace?.repoPath && (
           <div className="row">
-            <input
-              value={repoInput}
-              onChange={(e) => setRepoInput(e.target.value)}
-              placeholder="C:\\percorso\\del\\repo"
-              style={{ fontSize: 12.5 }}
-            />
-            <button className="btn small primary" onClick={() => void openRepo()} disabled={!repoInput.trim()}>
-              apri
+            {workspace?.repoPath && (
+              <button className={`btn small${picking ? ' on' : ''}`} onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
+                <History size={13} /> cambia
+              </button>
+            )}
+            <button className="btn small" onClick={() => void load()} disabled={loading || !workspace?.repoPath} aria-label="aggiorna">
+              {loading ? <Loader2 size={13} className="spinner" /> : <RefreshCw size={13} />}
             </button>
+          </div>
+        </div>
+        {workspace?.repoPath ? (
+          <span className="file-title">
+            <span className="name">{fileNameOf(workspace.repoPath)}</span>
+            <span className="dir"><bdi>{dirOf(workspace.repoPath)}</bdi></span>
+          </span>
+        ) : (
+          <div className="muted">nessun repository aperto sul desktop</div>
+        )}
+        {showPicker && (
+          <div className="picker">
+            {recents.length > 0 && <div className="picker-label">recenti nell’IDE</div>}
+            {recents.map((path) => (
+              <button key={path} className="list-item" onClick={() => void openRepo(path)} disabled={opening !== null}>
+                {opening === path ? <Loader2 size={15} className="spinner" /> : <FolderGit2 size={15} color="var(--accent)" />}
+                <span className="file-title">
+                  <span className="name">{fileNameOf(path)}</span>
+                  <span className="dir"><bdi>{dirOf(path)}</bdi></span>
+                </span>
+              </button>
+            ))}
+            <div className="row">
+              <input
+                value={repoInput}
+                onChange={(e) => setRepoInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && repoInput.trim()) void openRepo(repoInput.trim()) }}
+                placeholder="C:\\percorso\\del\\repo"
+                style={{ fontSize: 12.5 }}
+              />
+              <button className="btn small primary" onClick={() => void openRepo(repoInput.trim())} disabled={!repoInput.trim() || opening !== null}>
+                apri
+              </button>
+            </div>
           </div>
         )}
       </div>

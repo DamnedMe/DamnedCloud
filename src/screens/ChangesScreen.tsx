@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, FileDiff, Plus, Minus, Undo2, Loader2, Send, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { RefreshCw, FileDiff, Plus, Minus, Undo2, Loader2, Send, ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight } from 'lucide-react'
 import { useRemoteStore, sendConfirmed } from '../lib/store'
+import { useNavStore } from '../lib/nav'
 import { isDeclined, useBridgeRefresh } from './bridgeHelpers'
+import { dirOf, fileNameOf, groupChanges } from '../shared/changeGroups'
+import { DiffInspector } from './DiffInspector'
 
 interface PorcelainFile {
   path: string
@@ -14,44 +17,55 @@ interface Porcelain {
   unmerged: PorcelainFile[]
 }
 
+type Zone = 'conflict' | 'staged' | 'unstaged'
+
+/** One row per zone, as the IDE lists them: a file staged and modified again shows twice. */
 interface Row {
   path: string
-  status: string
-  staged: boolean
-  unstaged: boolean
-  conflict: boolean
+  /** 'add' | 'delete' | 'edit' (GitService.porcelain); a conflict: its XY code */
+  changeType: string
+  zone: Zone
   /** new file git does not track yet (porcelain "??"): discarding it deletes it from disk */
   untracked: boolean
 }
 
+const ZONES: { id: Zone; label: string; color: string }[] = [
+  { id: 'conflict', label: 'conflitti', color: 'var(--error)' },
+  { id: 'staged', label: 'modifiche in stage', color: 'var(--success)' },
+  { id: 'unstaged', label: 'modifiche', color: 'var(--warning)' }
+]
+
+// changeGroups labels are the IDE's English i18n keys: the ones its Italian locale translates
+const GROUP_LABELS: Record<string, string> = {
+  Interfaces: 'Interfacce',
+  Configuration: 'Configurazione',
+  Documentation: 'Documentazione',
+  Other: 'Altro'
+}
+
+const keyOf = (row: Row) => `${row.zone}:${row.path}`
+
 function buildRows(p: Porcelain): Row[] {
-  const map = new Map<string, Row>()
-  const ensure = (path: string): Row => {
-    let row = map.get(path)
-    if (!row) {
-      row = { path, status: '', staged: false, unstaged: false, conflict: false, untracked: false }
-      map.set(path, row)
-    }
-    return row
-  }
-  for (const f of p.staged) {
-    const row = ensure(f.path)
-    row.staged = true
-    row.status = f.changeType
-  }
-  for (const f of p.unstaged) {
-    const row = ensure(f.path)
-    row.unstaged = true
+  const staged = new Set(p.staged.map((f) => f.path))
+  return [
+    ...p.unmerged.map((f): Row => ({ path: f.path, changeType: f.changeType, zone: 'conflict', untracked: false })),
+    ...p.staged.map((f): Row => ({ path: f.path, changeType: f.changeType, zone: 'staged', untracked: false })),
     // GitService.porcelain reports "??" as an unstaged 'add'; a staged "A" lands in staged first
-    row.untracked = f.changeType === 'add' && !row.staged
-    row.status = row.status || f.changeType
-  }
-  for (const f of p.unmerged) {
-    const row = ensure(f.path)
-    row.conflict = true
-    row.status = 'U'
-  }
-  return [...map.values()]
+    ...p.unstaged.map((f): Row => ({ path: f.path, changeType: f.changeType, zone: 'unstaged', untracked: f.changeType === 'add' && !staged.has(f.path) }))
+  ]
+}
+
+function statusLetter(row: Row): { ch: string; color: string } {
+  if (row.zone === 'conflict') return { ch: 'U', color: 'var(--error)' }
+  if (row.changeType === 'add') return { ch: 'A', color: 'var(--success)' }
+  if (row.changeType === 'delete') return { ch: 'D', color: 'var(--error)' }
+  return { ch: 'M', color: 'var(--warning)' }
+}
+
+/** `rel` (porcelain, '/') under `root`, with the separator of `root`. */
+function absPath(root: string, rel: string): string {
+  const s = root.includes('\\') ? '\\' : '/'
+  return `${root.replace(/[\\/]+$/, '')}${s}${rel.split('/').join(s)}`
 }
 
 const MAX_NEW_FILE_LINES = 2000
@@ -63,40 +77,48 @@ function newFileDiff(content: string): string {
   if (lines[lines.length - 1] === '') lines.pop()
   const shown = lines.slice(0, MAX_NEW_FILE_LINES).map((line) => `+${line}`)
   if (lines.length > MAX_NEW_FILE_LINES) shown.push(`… altre ${lines.length - MAX_NEW_FILE_LINES} righe`)
-  return [`@@ nuovo file · ${lines.length} righe @@`, ...shown].join('\n')
+  return [`@@ -0,0 +1,${lines.length} @@ nuovo file`, ...shown].join('\n')
 }
 
-function DiffView({ text }: { text: string }) {
-  return (
-    <pre className="diff">
-      {text.split('\n').map((line, i) => {
-        const cls = line.startsWith('+') && !line.startsWith('+++') ? 'add'
-          : line.startsWith('-') && !line.startsWith('---') ? 'del'
-            : line.startsWith('@@') ? 'hunk' : ''
-        return (
-          <div key={i} className={cls ? `diff-line ${cls}` : 'diff-line'}>
-            {line || ' '}
-          </div>
-        )
-      })}
-    </pre>
-  )
+/** Phone held sideways: little height, the selected change gets the whole screen. */
+const LANDSCAPE_PHONE = '(orientation: landscape) and (max-height: 600px)'
+
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const onChange = () => setOn(mq.matches)
+    onChange()
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [query])
+  return on
 }
 
 export function ChangesScreen() {
   const workspace = useRemoteStore((s) => s.workspace)
   const send = useRemoteStore((s) => s.send)
+  const openInEditor = useNavStore((s) => s.openInEditor)
   const [rows, setRows] = useState<Row[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState<'pull' | 'push' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const diffFor = useRef<string | null>(null)
+  const inspectorRef = useRef<HTMLDivElement>(null)
+  const landscape = useMedia(LANDSCAPE_PHONE)
 
   const repoPath = workspace?.selectedWorktree || workspace?.repoPath || null
+  const selectedRow = rows.find((r) => keyOf(r) === selected) ?? null
+  const zones = useMemo(
+    () => ZONES.map((z) => ({ ...z, groups: groupChanges(rows.filter((r) => r.zone === z.id)) })).filter((z) => z.groups.length > 0),
+    [rows]
+  )
+  const stagedCount = rows.filter((r) => r.zone === 'staged').length
 
   // quiet: a refresh pushed by the bridge keeps the error of the last action on screen
   const load = useCallback(async (quiet = false) => {
@@ -107,7 +129,7 @@ export function ChangesScreen() {
       const porcelain = await send<Porcelain>('git.porcelain', { repoPath })
       const next = buildRows(porcelain)
       setRows(next)
-      setSelected((path) => (path && next.some((r) => r.path === path) ? path : null))
+      setSelected((key) => (key && next.some((r) => keyOf(r) === key) ? key : null))
     } catch (e) {
       if (!quiet) setError((e as Error).message)
     } finally {
@@ -122,24 +144,35 @@ export function ChangesScreen() {
   useBridgeRefresh(['git.changed', 'fs.changed'], [repoPath, workspace?.repoPath], () => void load(true))
 
   const openDiff = async (row: Row) => {
-    diffFor.current = row.path
-    setSelected(row.path)
-    setDiff('caricamento…')
+    const key = keyOf(row)
+    diffFor.current = key
+    setSelected(key)
+    setDiff(null)
     try {
       // ponytail: the bridge resolve()s the path, so the porcelain '/' on a Windows root is fine
       const text = row.untracked
-        ? newFileDiff((await send<{ content: string }>('fs.read', { file: `${repoPath!.replace(/[\\/]+$/, '')}/${row.path}` })).content)
-        : await send<string>('git.diff', { repoPath, file: row.path, staged: row.staged && !row.unstaged })
-      if (diffFor.current === row.path) setDiff(text)
+        ? newFileDiff((await send<{ content: string }>('fs.read', { file: absPath(repoPath!, row.path) })).content)
+        : await send<string>('git.diff', { repoPath, file: row.path, staged: row.zone === 'staged' })
+      if (diffFor.current === key) setDiff(text)
     } catch (e) {
-      if (diffFor.current === row.path) setDiff(`// ${(e as Error).message}`)
+      if (diffFor.current === key) setDiff(`// ${(e as Error).message}`)
     }
+  }
+
+  // portrait: the inspector sits under the list, bring it into view once it opens
+  useEffect(() => {
+    if (selected && !landscape) inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [selected, landscape])
+
+  const closeDiff = () => {
+    diffFor.current = null
+    setSelected(null)
+    setDiff(null)
   }
 
   const stageToggle = async (row: Row) => {
     try {
-      if (row.staged && !row.unstaged) await send('git.unstage', { repoPath, files: [row.path] })
-      else await send('git.stage', { repoPath, files: [row.path] })
+      await send(row.zone === 'staged' ? 'git.unstage' : 'git.stage', { repoPath, files: [row.path] })
       await load()
     } catch (e) {
       setError((e as Error).message)
@@ -149,8 +182,8 @@ export function ChangesScreen() {
   const discard = async (row: Row) => {
     try {
       // untracked makes GitService.discardChanges rm the path: only for a new file, a tracked
-      // one is restored with checkout (staged: reset first, so both sides are undone)
-      await sendConfirmed('git.discard', { repoPath, file: row.path, staged: row.staged, untracked: row.untracked })
+      // one is restored with checkout (a staged row: reset first, so both sides are undone)
+      await sendConfirmed('git.discard', { repoPath, file: row.path, staged: row.zone === 'staged', untracked: row.untracked })
       await load()
     } catch (e) {
       if (!isDeclined(e)) setError((e as Error).message)
@@ -185,13 +218,37 @@ export function ChangesScreen() {
     }
   }
 
+  const toggleGroup = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+
   if (!repoPath) {
-    return <div className="muted" style={{ textAlign: 'center', padding: 24 }}>Apri un repository dalla sezione Worktree.</div>
+    return <div className="empty-state">Apri un repository dalla sezione Worktree.</div>
   }
+
+  const inspector = selectedRow && (
+    <div ref={inspectorRef} className={landscape ? 'inspector-wrap fill' : 'inspector-wrap'}>
+      <DiffInspector
+        path={selectedRow.path}
+        text={diff}
+        // a nested repository (trailing '/') or a deleted file has nothing to open
+        editable={selectedRow.changeType !== 'delete' && !selectedRow.path.endsWith('/')}
+        fill={landscape}
+        onClose={closeDiff}
+        onOpenEditor={(line) => openInEditor(absPath(repoPath, selectedRow.path), line)}
+      />
+    </div>
+  )
+
+  // landscape phone: straight to the inspector of the selected change
+  if (landscape && inspector) return inspector
 
   return (
     <>
-      <div className="row between">
+      <div className="screen-head">
         <div className="row">
           <FileDiff size={16} color="var(--accent)" />
           <strong>Modifiche</strong>
@@ -204,7 +261,7 @@ export function ChangesScreen() {
           <button className="btn small" onClick={() => void sync('push')} disabled={syncing !== null} title="push">
             {syncing === 'push' ? <Loader2 size={13} className="spinner" /> : <ArrowUpFromLine size={13} />} push
           </button>
-          <button className="btn small" onClick={() => void load()} disabled={loading}>
+          <button className="btn small" onClick={() => void load()} disabled={loading} aria-label="aggiorna">
             {loading ? <Loader2 size={13} className="spinner" /> : <RefreshCw size={13} />}
           </button>
         </div>
@@ -213,42 +270,89 @@ export function ChangesScreen() {
       {error && <div className="error-banner">{error}</div>}
       {notice && <div className="changes-notice">{notice}</div>}
 
-      <div className="list">
-        {rows.map((row) => (
-          <div key={row.path} className={`list-item${selected === row.path ? ' active' : ''}`} onClick={() => void openDiff(row)}>
-            <span className="badge" style={{ color: row.conflict ? 'var(--error)' : row.staged ? 'var(--success)' : 'var(--warning)' }}>
-              {row.status || (row.staged ? 'S' : 'M')}
-            </span>
-            <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 12 }}>{row.path}</span>
-            <button className="btn small" onClick={(e) => { e.stopPropagation(); void stageToggle(row) }} title={row.staged && !row.unstaged ? 'unstage' : 'stage'}>
-              {row.staged && !row.unstaged ? <Minus size={13} /> : <Plus size={13} />}
-            </button>
-            {/* a conflict is solved by editing and staging the file, not by discarding it */}
-            {!row.conflict && (
-              <button className="btn small danger" onClick={(e) => { e.stopPropagation(); void discard(row) }} title={row.untracked ? 'elimina file nuovo' : 'scarta'}>
-                <Undo2 size={13} />
-              </button>
-            )}
-          </div>
-        ))}
-        {!loading && rows.length === 0 && <div className="muted" style={{ textAlign: 'center', padding: 16 }}>nessuna modifica</div>}
+      <div className="changes-layout">
+        <div className="changes-list">
+          {zones.map((zone) => (
+            <section key={zone.id} className="zone">
+              <div className="zone-head" style={{ color: zone.color }}>
+                {zone.label}
+                <span className="count">{zone.groups.reduce((n, g) => n + g.files.length, 0)}</span>
+              </div>
+              {zone.groups.map((group) => {
+                const groupKey = `${zone.id}:${group.id}`
+                const open = !collapsed.has(groupKey)
+                return (
+                  <div key={group.id} className="group">
+                    <button className="group-head" onClick={() => toggleGroup(groupKey)} aria-expanded={open}>
+                      {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      <span className="label">{GROUP_LABELS[group.label] ?? group.label}</span>
+                      <span className="count">{group.files.length}</span>
+                    </button>
+                    {open && group.files.map((row) => {
+                      const { ch, color } = statusLetter(row)
+                      const dir = dirOf(row.path)
+                      const active = selected === keyOf(row)
+                      return (
+                        <div
+                          key={keyOf(row)}
+                          role="button"
+                          tabIndex={0}
+                          aria-current={active || undefined}
+                          className={`change-row${active ? ' active' : ''}`}
+                          onClick={() => void openDiff(row)}
+                          onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+                            e.preventDefault()
+                            void openDiff(row)
+                          }}
+                        >
+                          <span className="status" style={{ color }}>{ch}</span>
+                          <span className="file-title">
+                            <span className="name">{fileNameOf(row.path)}</span>
+                            {/* cut from the start, the deepest folder stays visible: rtl moves the ellipsis, bdi keeps the text ltr */}
+                            {dir && <span className="dir"><bdi>{dir}</bdi></span>}
+                          </span>
+                          {row.zone !== 'conflict' && (
+                            <button
+                              className={`icon-btn ${row.zone === 'staged' ? 'ok' : 'warn'}`}
+                              onClick={(e) => { e.stopPropagation(); void stageToggle(row) }}
+                              aria-label={row.zone === 'staged' ? 'unstage' : 'stage'}
+                            >
+                              {row.zone === 'staged' ? <Minus size={14} /> : <Plus size={14} />}
+                            </button>
+                          )}
+                          {/* a conflict is solved by editing and staging the file, not by discarding it */}
+                          {row.zone !== 'conflict' && (
+                            <button
+                              className="icon-btn danger"
+                              onClick={(e) => { e.stopPropagation(); void discard(row) }}
+                              aria-label={row.untracked ? 'elimina file nuovo' : 'scarta'}
+                            >
+                              <Undo2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </section>
+          ))}
+          {!loading && rows.length === 0 && <div className="empty-state">nessuna modifica</div>}
+        </div>
+
+        {inspector}
       </div>
 
-      {selected && diff !== null && (
-        <div className="card">
-          <div className="muted mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>{selected}</div>
-          <DiffView text={diff} />
-        </div>
-      )}
-
-      {rows.length > 0 && (
+      {stagedCount > 0 && (
         <div className="card">
           <label className="field">
             Messaggio di commit
             <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="#123 : descrizione" />
           </label>
           <button className="btn primary" onClick={() => void commit()} disabled={!message.trim()}>
-            <Send size={15} /> commit
+            <Send size={15} /> commit · {stagedCount} file
           </button>
         </div>
       )}

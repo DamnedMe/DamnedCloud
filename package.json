@@ -1,13 +1,15 @@
 {
   "name": "damnedcloud",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Client mobile per il controllo remoto di DamnedIDE",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "test:diff": "node --experimental-strip-types scripts/diff.check.ts",
+    "test:release": "node --experimental-strip-types scripts/release.check.ts",
     "preview": "vite preview",
     "cap:sync": "cap sync android",
     "android:apk": "cap sync android && cd android && gradlew.bat assembleDebug"

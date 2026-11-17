@@ -5,14 +5,20 @@ Client **Android** per il controllo remoto di [DamnedIDE](https://github.com/Dam
 DamnedCloud si associa all'IDE in esecuzione sul PC (via **Tailscale**) e permette di
 vedere e comandare da telefono, con una UI pensata per il mobile:
 
-- **Worktree** — elenco, selezione, stato
-- **Modifiche** — file modificati, diff, stage/unstage, commit, discard
-- **Editor** — albero file, lettura e modifica con salvataggio
+- **Worktree** — elenco, selezione, stato; cambio repository tra le recenti dell'IDE
+- **Modifiche** — zone staged / modifiche raggruppate per tipo come nell'IDE (Controller, Service, DB, …),
+  stage/unstage, commit, discard; inspector del diff unificato o affiancato con zoom, a tutto schermo
+  col telefono in orizzontale; « editor » apre il file alla riga toccata (o alla prima modifica)
+- **Rilascio** — il pannello Rilascio dell'IDE (Azure DevOps): develop → qa, qa → prod o la catena
+  develop → qa → prod per BE/FE, con branch, commit e work item da includere; le catene in corso
+  si seguono e si annullano dal telefono (richiede DamnedIDE con il rilascio remoto)
+- **Editor** — albero file, lettura e modifica con salvataggio, numeri di riga
+- **Tema** — lo stesso dell'IDE (scuro/chiaro e colore primario), ricordato anche offline
 - **SQL** — connessioni già aperte sul desktop, database/tabelle, esecuzione query
 - **Impostazioni** — dispositivi, permessi, connessione
 
-Le azioni distruttive (discard, rimozione worktree, query che modificano dati) richiedono
-una conferma esplicita.
+Le azioni distruttive (discard, rimozione worktree, query che modificano dati) e i rilasci
+che arrivano in produzione (qa → prod, catena) richiedono una conferma esplicita.
 
 ## Architettura
 
@@ -29,7 +35,8 @@ DamnedIDE (PC)                         DamnedCloud (telefono)
 ```
 
 Il protocollo condiviso è `src/shared/remote/protocol.ts` (copia gemella in
-`DamnedIDE/src/shared/remote/protocol.ts`; vanno tenuti allineati).
+`DamnedIDE/src/shared/remote/protocol.ts`; vanno tenuti allineati). Lo stesso vale per
+`src/shared/changeGroups.ts` (raggruppamento delle modifiche, gemello di quello dell'IDE).
 
 ## Sviluppo
 
@@ -81,4 +88,6 @@ Per una build locale installabile sopra quella della CI: `ANDROID_KEYSTORE_FILE`
 - **Token per dispositivo** (salvato come hash sul PC), permessi per dispositivo,
   revoca singola o totale.
 - Le credenziali SQL restano sul PC: il telefono usa solo connessioni già aperte.
+- Il PAT di Azure DevOps resta sul PC: il bridge rilegge tutto prima di creare le PR e crea solo
+  PR di promozione tra i branch develop / qa / prod (mai cancellati, policy mai bypassate).
 - I percorsi file sono limitati al repository/worktree aperti.
