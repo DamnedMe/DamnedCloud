@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import jsQR from 'jsqr'
 import { Camera, X } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
 
-/** Longest side the frames are scaled to before decoding: enough for a QR on screen, cheap on a phone. */
-const MAX_SIDE = 720
+/** Longest side the framed centre of a live frame is scaled to before decoding: cheap on a phone. */
+const LIVE_SIDE = 960
+/**
+ * A photo of a screen shows the (dense) pairing QR small: at 720 px its modules blur together, so
+ * photos are decoded larger first (1280, then 2048 if that fails).
+ */
+const PHOTO_SIDES = [1280, 2048]
 
-function decode(source: CanvasImageSource, width: number, height: number, canvas: HTMLCanvasElement): string | null {
-  const scale = Math.min(1, MAX_SIDE / Math.max(width, height))
+/** Decodes the region (sx, sy, w, h) of `source`, scaled down to `maxSide` at most. */
+function decode(source: CanvasImageSource, [sx, sy, width, height]: number[], canvas: HTMLCanvasElement, maxSide: number): string | null {
+  const scale = Math.min(1, maxSide / Math.max(width, height))
   canvas.width = Math.max(1, Math.round(width * scale))
   canvas.height = Math.max(1, Math.round(height * scale))
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return null
-  ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
+  ctx.drawImage(source, sx, sy, width, height, 0, 0, canvas.width, canvas.height)
   const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
   return jsQR(data, canvas.width, canvas.height)?.data || null
 }
@@ -36,7 +43,8 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
     let timer = 0
     let done = false
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      // Ask for HD: the default stream is often 640x480, too coarse for the dense pairing QR on a screen.
+      .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
       .then(async (s) => {
         stream = s
         if (done) return s.getTracks().forEach((t) => t.stop())
@@ -46,7 +54,9 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
         const tick = () => {
           if (done) return
           if (video.readyState >= 2 && video.videoWidth) {
-            const text = decode(video, video.videoWidth, video.videoHeight, canvasRef.current)
+            // Only the framed centre, at full resolution: the QR fills it, nothing gets scaled away.
+            const vw = video.videoWidth, vh = video.videoHeight, side = Math.round(Math.min(vw, vh) * 0.8)
+            const text = decode(video, [(vw - side) / 2, (vh - side) / 2, side, side], canvasRef.current, LIVE_SIDE)
             if (text) {
               done = true
               resultRef.current(text)
@@ -74,7 +84,8 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
     setError(null)
     try {
       const bitmap = await createImageBitmap(file)
-      const text = decode(bitmap, bitmap.width, bitmap.height, canvasRef.current)
+      let text: string | null = null
+      for (const side of PHOTO_SIDES) if (!text) text = decode(bitmap, [0, 0, bitmap.width, bitmap.height], canvasRef.current, side)
       bitmap.close()
       if (text) onResult(text)
       else setError('Nessun QR trovato nella foto: riprova più vicino e a fuoco.')
@@ -100,7 +111,9 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
         <div className="scanner-view scanner-photo">
           <Camera size={42} color="var(--accent)" />
           <div className="muted" style={{ textAlign: 'center' }}>
-            In DamnedIDE → Accesso remoto genera il QR di associazione, poi scattagli una foto.
+            {Capacitor.isNativePlatform()
+              ? 'Scatta una foto del QR di associazione mostrato da DamnedIDE.'
+              : "Qui il browser non concede la fotocamera dal vivo. Più comodo: inquadra il QR di associazione di DamnedIDE con l'app Fotocamera del telefono, si apre la webapp già associata. Oppure scattagli una foto."}
           </div>
         </div>
       )}

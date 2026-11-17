@@ -68,7 +68,11 @@ export function PairingScreen() {
         </div>
         <div className="muted">
           Su PC apri DamnedIDE → Impostazioni → Accesso remoto → <strong>{WEB ? 'Browser (webapp)' : 'App Android'}</strong> →
-          genera QR di associazione, poi inquadralo qui. Sul PC compare un codice da confermare.
+          genera QR di associazione,{' '}
+          {WEB
+            ? "poi inquadralo con l'app Fotocamera del telefono (apre la webapp già associata) o con «Scansiona QR»."
+            : 'poi inquadralo con «Scansiona QR».'}{' '}
+          Sul PC compare un codice da confermare.
         </div>
         <button className="btn primary" onClick={() => setScanning(true)} disabled={pairing}>
           <ScanLine size={15} /> Scansiona QR

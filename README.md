@@ -76,18 +76,19 @@ Per una build locale installabile sopra quella della CI: `ANDROID_KEYSTORE_FILE`
 
 ## Associazione
 
-In DamnedIDE, **Impostazioni → Accesso remoto**, ci sono due procedure separate e tre QR:
+In DamnedIDE, **Impostazioni → Accesso remoto**, ci sono due procedure separate e tre QR, mostrati
+uno alla volta e grandi (passo 1 → passo 2):
 
 | Scheda | Passo 1 | Passo 2 |
 |---|---|---|
-| **App Android** | QR fisso per scaricare l'APK | QR di associazione (generato, scade in 5 minuti) |
-| **Browser (webapp)** | QR fisso con l'indirizzo della webapp (`http://<pc>:8765/`) | lo stesso QR di associazione |
+| **App Android** | QR fisso per scaricare l'APK | QR di associazione `damnedcloud://pair?d=…` (generato, scade in 5 minuti) |
+| **Browser (webapp)** | QR fisso con l'indirizzo della webapp (`http://<pc>:8765/`) | QR di associazione come link della webapp `http://<pc>:8765/#…` |
 
-Nella pagina di associazione, nell'app e nella webapp, **Scansiona QR** legge il QR di associazione
-(`damnedcloud://pair?d=…`). Con la fotocamera dal vivo dove il browser lo consente (l'app, una pagina
-https o localhost); su una webapp in http sulla LAN il browser non la concede, quindi si scatta una foto
-del QR. Il QR inquadrato con l'app Fotocamera del telefono apre direttamente DamnedCloud. Sul desktop
-compare una richiesta con un codice a 6 cifre da confermare.
+Il QR di associazione inquadrato con l'app Fotocamera del telefono apre direttamente DamnedCloud
+(scheda App) o la webapp già associata (scheda Browser). In alternativa, nella pagina di associazione,
+**Scansiona QR** lo legge: dal vivo dove il browser concede la fotocamera (l'app, una pagina https o
+localhost), altrimenti (webapp in http sulla LAN) da una foto del QR. Sul desktop compare una richiesta
+con un codice a 6 cifre da confermare.
 
 ## Aggiornamenti
 
