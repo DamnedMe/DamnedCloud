@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { QrCode, Link2, Loader2, RefreshCw, MonitorCheck } from 'lucide-react'
+import { QrCode, Link2, Loader2, RefreshCw, MonitorCheck, ScanLine } from 'lucide-react'
 import { servedEndpoint, useRemoteStore } from '../lib/store'
+import { QrScanner } from '../components/QrScanner'
 
 /** In the LAN webapp the bridge is this page's own origin: no APK, no QR to scan. */
 const WEB = !!servedEndpoint()
@@ -10,6 +11,13 @@ export function PairingScreen() {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
+
+  const scanned = (text: string) => {
+    setScanning(false)
+    setLocalError(null)
+    void pairWithCode(text).catch(() => { /* shown from the store's `error` */ })
+  }
 
   const pair = async () => {
     if (!code.trim()) return
@@ -56,23 +64,19 @@ export function PairingScreen() {
       <div className="card">
         <div className="row">
           <QrCode size={18} color="var(--accent)" />
-          <strong>{WEB ? '1. Associa questo browser' : '1. Installa e associa'}</strong>
+          <strong>Associa {WEB ? 'questo browser' : 'il telefono'}</strong>
         </div>
-        {WEB ? (
+        <div className="muted">
+          Su PC apri DamnedIDE → Impostazioni → Accesso remoto → <strong>{WEB ? 'Browser (webapp)' : 'App Android'}</strong> →
+          genera QR di associazione, poi inquadralo qui. Sul PC compare un codice da confermare.
+        </div>
+        <button className="btn primary" onClick={() => setScanning(true)} disabled={pairing}>
+          <ScanLine size={15} /> Scansiona QR
+        </button>
+        {!WEB && (
           <div className="muted">
-            Apri DamnedIDE su PC → Impostazioni → Accesso remoto → attiva → genera QR → <strong>copia link webapp</strong>,
-            poi apri il link in questo browser oppure incollalo qui sotto.
+            Serve <strong>Tailscale</strong> attivo su telefono e PC, con lo stesso account.
           </div>
-        ) : (
-          <>
-            <div className="muted">
-              Apri DamnedIDE su PC → Impostazioni → Accesso remoto → attiva → genera QR, poi scansiona il QR col telefono.
-              Se DamnedCloud è già installato, il QR apre l’app e completa l’associazione.
-            </div>
-            <div className="muted">
-              Assicurati che <strong>Tailscale</strong> sia attivo e connesso su telefono e PC.
-            </div>
-          </>
         )}
       </div>
 
@@ -87,11 +91,11 @@ export function PairingScreen() {
             rows={3}
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder={WEB ? 'link della webapp copiato da DamnedIDE' : 'damnedcloud://pair?... oppure incolla il contenuto del QR'}
+            placeholder={WEB ? 'codice o link copiato da DamnedIDE' : 'damnedcloud://pair?... oppure il codice copiato da DamnedIDE'}
             style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
           />
         </label>
-        <button className="btn primary" onClick={() => void pair()} disabled={pairing || busy || !code.trim()}>
+        <button className="btn" onClick={() => void pair()} disabled={pairing || busy || !code.trim()}>
           {pairing ? <Loader2 size={15} className="spinner" /> : <QrCode size={15} />}
           Associa
         </button>
@@ -105,6 +109,8 @@ export function PairingScreen() {
       )}
 
       {message && <div className="error-banner">{message}</div>}
+
+      {scanning && <QrScanner onResult={scanned} onClose={() => setScanning(false)} />}
 
       <div className="muted mono" style={{ textAlign: 'center', fontSize: 11 }}>
         stato: {status}

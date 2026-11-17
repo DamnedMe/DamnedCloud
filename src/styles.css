@@ -1320,3 +1320,68 @@ button.btn.caution {
 .warn-text {
   color: var(--warning);
 }
+
+/* QrScanner: full-screen reader over the pairing screen */
+.scanner {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+}
+.scanner-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.scanner-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scanner-view video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scanner-frame {
+  position: absolute;
+  width: min(64vw, 280px);
+  aspect-ratio: 1;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+}
+.scanner-photo {
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: transparent;
+  border: 1px dashed var(--accent);
+}
+
+/* App update offer (lib/update.ts) */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent-dim);
+  color: var(--text, inherit);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.update-banner span {
+  flex: 1;
+}

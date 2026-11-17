@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Smartphone, RefreshCw, LogOut, ShieldCheck, Server, Info } from 'lucide-react'
+import { Smartphone, RefreshCw, LogOut, ShieldCheck, Server, Info, Download } from 'lucide-react'
 import { useRemoteStore } from '../lib/store'
 import { SCOPE_LABELS } from '../shared/remote/protocol'
 import { version as appVersion } from '../../package.json'
+import { installAppUpdate, useUpdateStore } from '../lib/update'
+import { servedEndpoint } from '../lib/store'
 
 export function SettingsScreen() {
   const { device, endpoint, status, workspace, connect, forget, send } = useRemoteStore()
   const [info, setInfo] = useState<{ ide: string; ideVersion: string; protocolVersion: number; platform: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const updates = useUpdateStore()
+  const web = !!servedEndpoint()
 
   // Refetch on every (re)authentication: the IDE may have been updated or restarted meanwhile.
   useEffect(() => {
@@ -100,6 +104,26 @@ export function SettingsScreen() {
         <div className="row between"><span className="muted">App</span><span className="mono" style={{ fontSize: 12 }}>DamnedCloud {appVersion}</span></div>
         <div className="row between"><span className="muted">IDE</span><span className="mono" style={{ fontSize: 12 }}>{info ? `${info.ide} ${info.ideVersion}` : '—'}</span></div>
         <div className="row between"><span className="muted">Protocollo</span><span className="mono" style={{ fontSize: 12 }}>{info ? `v${info.protocolVersion}` : '—'}</span></div>
+        {web ? (
+          <div className="muted" style={{ fontSize: 12 }}>
+            La webapp è quella inclusa in DamnedIDE: quando aggiorni l’IDE la pagina si ricarica da sola con la nuova versione.
+          </div>
+        ) : updates.update ? (
+          <button className="btn primary" onClick={installAppUpdate}>
+            <Download size={15} /> aggiorna a {updates.update.latest}
+          </button>
+        ) : (
+          <>
+            <button className="btn" onClick={() => void updates.check(true)} disabled={updates.checking}>
+              <RefreshCw size={15} /> {updates.checking ? 'verifica in corso…' : 'verifica aggiornamenti'}
+            </button>
+            {updates.error ? (
+              <div className="error-banner">{updates.error}</div>
+            ) : updates.checkedAt > 0 && !updates.checking ? (
+              <div className="muted" style={{ fontSize: 12 }}>Hai l’ultima versione.</div>
+            ) : null}
+          </>
+        )}
       </div>
 
       <button className="btn danger" onClick={() => void unpair()} disabled={busy}>

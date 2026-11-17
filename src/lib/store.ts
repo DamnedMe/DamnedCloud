@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Capacitor } from '@capacitor/core'
 import { RemoteConnection, RemoteError, type ConnState, type ConnectionInfo } from './connection'
-import { fromBase64Url, type DeviceInfo, type PairingPayload, type PairingPendingEvent, type PairingResult, type RemoteSqlConnection, type WorkspaceSnapshot } from '../shared/remote/protocol'
+import { fromBase64Url, type HelloPayload, type DeviceInfo, type PairingPayload, type PairingPendingEvent, type PairingResult, type RemoteSqlConnection, type WorkspaceSnapshot } from '../shared/remote/protocol'
 
 const SESSION_KEY = 'damnedcloud.session'
 const USED_LINKS_KEY = 'damnedcloud.usedPairingTokens'
@@ -85,6 +85,19 @@ export function servedEndpoint(): ConnectionInfo | null {
   if (Capacitor.isNativePlatform() || !import.meta.env.PROD || !/^https?:$/.test(location.protocol)) return null
   const tls = location.protocol === 'https:'
   return { host: location.hostname, port: Number(location.port) || (tls ? 443 : 80), tls }
+}
+
+/** IDE version that served this webapp page (first hello). */
+let servedByIde: string | null = null
+
+/**
+ * Webapp "OTA": the page is the build shipped with DamnedIDE. When the bridge answers with another
+ * IDE version (the IDE updated while the tab stayed open), reload to pick up the new build.
+ */
+function reloadOnIdeUpdate(hello: HelloPayload): void {
+  if (!servedEndpoint() || !hello?.ideVersion) return
+  if (servedByIde && servedByIde !== hello.ideVersion) window.location.reload()
+  servedByIde = hello.ideVersion
 }
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -246,7 +259,7 @@ export const useRemoteStore = create<RemoteState>((set, get) => {
       try {
         await connection.connect(endpoint)
         opened = true
-        await connection.request('hello')
+        reloadOnIdeUpdate(await connection.request<HelloPayload>('hello'))
         if (!token) return
         const session = await authenticate(token)
         if (attempt !== attemptSeq) return
@@ -281,7 +294,7 @@ export const useRemoteStore = create<RemoteState>((set, get) => {
       set({ pairing: true, pairingCode: null, error: null })
       try {
         await connection.connect(endpoint)
-        await connection.request('hello')
+        reloadOnIdeUpdate(await connection.request<HelloPayload>('hello'))
         const result = await connection.request<PairingResult>('pair', {
           token: payload.token,
           name: deviceName(),

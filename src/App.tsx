@@ -12,6 +12,8 @@ import { ReleaseScreen } from './screens/ReleaseScreen'
 import { EditorScreen } from './screens/EditorScreen'
 import { SqlScreen } from './screens/SqlScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { UpdateBanner } from './components/UpdateBanner'
+import { useUpdateStore } from './lib/update'
 
 const TABS: { id: Tab; label: string; icon: typeof Boxes }[] = [
   { id: 'worktrees', label: 'Worktree', icon: Boxes },
@@ -46,6 +48,7 @@ export default function App() {
 
   useEffect(() => {
     load()
+    void useUpdateStore.getState().check()
     const openLink = (url: string) => {
       setBannerError(null)
       void openPairingLink(url).catch((e) => setBannerError((e as Error).message || 'associazione fallita'))
@@ -55,7 +58,10 @@ export default function App() {
       // so appUrlOpen alone covers both a cold start and a running app.
       CapApp.addListener('appUrlOpen', ({ url }) => openLink(url)),
       CapApp.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) resume()
+        if (isActive) {
+          resume()
+          void useUpdateStore.getState().check()
+        }
       }),
       CapApp.addListener('backButton', () => {
         if (tabRef.current !== TABS[0].id) setTab(TABS[0].id)
@@ -110,6 +116,7 @@ export default function App() {
   if (!token || !device) {
     return (
       <div className="app">
+        <div style={{ padding: '10px 12px 0' }}><UpdateBanner /></div>
         <PairingScreen />
       </div>
     )
@@ -137,6 +144,7 @@ export default function App() {
         </div>
       ) : null}
       <div className="content">
+        <UpdateBanner />
         {bannerError && (
           <div className="error-banner" onClick={() => setBannerError(null)}>
             {bannerError}

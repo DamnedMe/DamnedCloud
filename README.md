@@ -74,26 +74,28 @@ base64 -w0 damnedcloud.jks   # -> secret ANDROID_KEYSTORE_BASE64
 Per una build locale installabile sopra quella della CI: `ANDROID_KEYSTORE_FILE` (percorso del
 `.jks`) più le stesse variabili, come env o in `~/.gradle/gradle.properties`.
 
-## Associazione (un solo QR)
+## Associazione
 
-1. In DamnedIDE: **Impostazioni → Mobile → associa telefono**.
-2. Scansiona il QR: apre la landing (GitHub Pages) che offre il download dell'APK
-   e il deep link `damnedcloud://pair?...`.
-3. Con l'app installata, il link la apre e completa l'associazione; sul desktop
-   compare una richiesta con un codice a 6 cifre da confermare.
+In DamnedIDE, **Impostazioni → Accesso remoto**, ci sono due procedure separate e tre QR:
 
-## Webapp nel browser (senza Android)
+| Scheda | Passo 1 | Passo 2 |
+|---|---|---|
+| **App Android** | QR fisso per scaricare l'APK | QR di associazione (generato, scade in 5 minuti) |
+| **Browser (webapp)** | QR fisso con l'indirizzo della webapp (`http://<pc>:8765/`) | lo stesso QR di associazione |
 
-La stessa app gira in un qualsiasi browser: DamnedIDE la include (build web di questo repository,
-`scripts/build-cloud-web.mjs` nell'IDE) e la serve dalla porta del bridge, `http://<pc>:8765/`.
+Nella pagina di associazione, nell'app e nella webapp, **Scansiona QR** legge il QR di associazione
+(`damnedcloud://pair?d=…`). Con la fotocamera dal vivo dove il browser lo consente (l'app, una pagina
+https o localhost); su una webapp in http sulla LAN il browser non la concede, quindi si scatta una foto
+del QR. Il QR inquadrato con l'app Fotocamera del telefono apre direttamente DamnedCloud. Sul desktop
+compare una richiesta con un codice a 6 cifre da confermare.
 
-1. In DamnedIDE: **Impostazioni → Accesso remoto**. Spunta **LAN** prima di attivare, se il browser
-   è sulla rete locale e il PC ha Tailscale acceso (altrimenti il bridge ascolta solo sulla tailnet).
-2. **Genera QR → copia link webapp** e apri il link nel browser; conferma il codice sul desktop come per il telefono.
+## Aggiornamenti
 
-Nel browser la webapp si collega sempre al bridge che l'ha servita (stessa origine), qualunque host
-indichi il link. Sulla LAN senza Tailscale il traffico è `ws://` in chiaro: token e contenuti
-viaggiano non cifrati sulla rete locale.
+- **App**: all'avvio e al ritorno in primo piano (al massimo ogni 6 ore) confronta la sua versione con
+  l'ultima release su GitHub e propone **aggiorna**, che scarica l'APK; Android lo installa sopra la
+  versione attuale, dati compresi. Verifica manuale in Impostazioni → Versioni.
+- **Webapp**: è la build inclusa in DamnedIDE; quando l'IDE viene aggiornato, la pagina aperta si
+  ricarica da sola alla riconnessione.
 
 ## Sicurezza
 
