@@ -82,6 +82,19 @@ Per una build locale installabile sopra quella della CI: `ANDROID_KEYSTORE_FILE`
 3. Con l'app installata, il link la apre e completa l'associazione; sul desktop
    compare una richiesta con un codice a 6 cifre da confermare.
 
+## Webapp nel browser (senza Android)
+
+La stessa app gira in un qualsiasi browser: DamnedIDE la include (build web di questo repository,
+`scripts/build-cloud-web.mjs` nell'IDE) e la serve dalla porta del bridge, `http://<pc>:8765/`.
+
+1. In DamnedIDE: **Impostazioni → Accesso remoto**. Spunta **LAN** prima di attivare, se il browser
+   è sulla rete locale e il PC ha Tailscale acceso (altrimenti il bridge ascolta solo sulla tailnet).
+2. **Genera QR → copia link webapp** e apri il link nel browser; conferma il codice sul desktop come per il telefono.
+
+Nel browser la webapp si collega sempre al bridge che l'ha servita (stessa origine), qualunque host
+indichi il link. Sulla LAN senza Tailscale il traffico è `ws://` in chiaro: token e contenuti
+viaggiano non cifrati sulla rete locale.
+
 ## Sicurezza
 
 - Traffico cifrato dalla rete privata **Tailscale** (WireGuard).

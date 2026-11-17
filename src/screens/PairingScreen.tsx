@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { QrCode, Link2, Loader2, RefreshCw, MonitorCheck } from 'lucide-react'
-import { useRemoteStore } from '../lib/store'
+import { servedEndpoint, useRemoteStore } from '../lib/store'
+
+/** In the LAN webapp the bridge is this page's own origin: no APK, no QR to scan. */
+const WEB = !!servedEndpoint()
 
 export function PairingScreen() {
   const { pairWithCode, connect, error, status, detail, token, pairing, pairingCode } = useRemoteStore()
@@ -53,15 +56,24 @@ export function PairingScreen() {
       <div className="card">
         <div className="row">
           <QrCode size={18} color="var(--accent)" />
-          <strong>1. Installa e associa</strong>
+          <strong>{WEB ? '1. Associa questo browser' : '1. Installa e associa'}</strong>
         </div>
-        <div className="muted">
-          Apri DamnedIDE su PC → Impostazioni → Accesso remoto → attiva → genera QR, poi scansiona il QR col telefono.
-          Se DamnedCloud è già installato, il QR apre l’app e completa l’associazione.
-        </div>
-        <div className="muted">
-          Assicurati che <strong>Tailscale</strong> sia attivo e connesso su telefono e PC.
-        </div>
+        {WEB ? (
+          <div className="muted">
+            Apri DamnedIDE su PC → Impostazioni → Accesso remoto → attiva → genera QR → <strong>copia link webapp</strong>,
+            poi apri il link in questo browser oppure incollalo qui sotto.
+          </div>
+        ) : (
+          <>
+            <div className="muted">
+              Apri DamnedIDE su PC → Impostazioni → Accesso remoto → attiva → genera QR, poi scansiona il QR col telefono.
+              Se DamnedCloud è già installato, il QR apre l’app e completa l’associazione.
+            </div>
+            <div className="muted">
+              Assicurati che <strong>Tailscale</strong> sia attivo e connesso su telefono e PC.
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card">
@@ -75,7 +87,7 @@ export function PairingScreen() {
             rows={3}
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="damnedcloud://pair?... oppure incolla il contenuto del QR"
+            placeholder={WEB ? 'link della webapp copiato da DamnedIDE' : 'damnedcloud://pair?... oppure incolla il contenuto del QR'}
             style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
           />
         </label>

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { Capacitor } from '@capacitor/core'
 import { RemoteConnection, RemoteError, type ConnState, type ConnectionInfo } from './connection'
 import { fromBase64Url, type DeviceInfo, type PairingPayload, type PairingPendingEvent, type PairingResult, type RemoteSqlConnection, type WorkspaceSnapshot } from '../shared/remote/protocol'
 
@@ -73,6 +74,17 @@ function parsePairingInput(input: string): PairingPayload {
   }
   if (!payload?.token || !payload.host) throw new Error('codice di associazione non valido')
   return payload
+}
+
+/**
+ * The web build in production is only ever served by the IDE bridge itself (LAN webapp): the
+ * bridge is the page's own origin, whatever host the pairing link advertises (the Tailscale name
+ * a browser on the LAN may not resolve). The APK and `vite dev` use the payload.
+ */
+export function servedEndpoint(): ConnectionInfo | null {
+  if (Capacitor.isNativePlatform() || !import.meta.env.PROD || !/^https?:$/.test(location.protocol)) return null
+  const tls = location.protocol === 'https:'
+  return { host: location.hostname, port: Number(location.port) || (tls ? 443 : 80), tls }
 }
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -263,7 +275,7 @@ export const useRemoteStore = create<RemoteState>((set, get) => {
     },
 
     pair: async (payload) => {
-      const endpoint: ConnectionInfo = { host: payload.host, port: payload.port, tls: payload.tls }
+      const endpoint: ConnectionInfo = servedEndpoint() ?? { host: payload.host, port: payload.port, tls: payload.tls }
       const attempt = ++attemptSeq
       cancelRetry()
       set({ pairing: true, pairingCode: null, error: null })
