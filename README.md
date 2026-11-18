@@ -90,6 +90,10 @@ Il QR di associazione inquadrato con l'app Fotocamera del telefono apre direttam
 localhost), altrimenti (webapp in http sulla LAN) da una foto del QR. Sul desktop compare una richiesta
 con un codice a 6 cifre da confermare.
 
+La webapp aggiunta alla schermata Home (iPhone «Aggiungi a Home», app installata) ha uno storage suo,
+separato dal browser: si associa da lì con **Scansiona QR** e una foto del QR (l'app Fotocamera aprirebbe
+il browser). Conviene quindi aggiungerla alla Home prima di associarla.
+
 ## Aggiornamenti
 
 - **App**: all'avvio e al ritorno in primo piano (al massimo ogni 6 ore) confronta la sua versione con

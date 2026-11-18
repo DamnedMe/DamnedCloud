@@ -5,6 +5,11 @@ import { QrScanner } from '../components/QrScanner'
 
 /** In the LAN webapp the bridge is this page's own origin: no APK, no QR to scan. */
 const WEB = !!servedEndpoint()
+/**
+ * Opened from the home screen (iOS "Aggiungi a Home", an installed web app): its storage is its own,
+ * apart from the browser's, so it pairs by itself. The camera app would open the browser instead.
+ */
+const HOME_APP = WEB && (matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true)
 
 export function PairingScreen() {
   const { pairWithCode, connect, error, status, detail, token, pairing, pairingCode } = useRemoteStore()
@@ -69,7 +74,9 @@ export function PairingScreen() {
         <div className="muted">
           Su PC apri DamnedIDE → Impostazioni → Accesso remoto → <strong>{WEB ? 'Browser (webapp)' : 'App Android'}</strong> →
           genera QR di associazione,{' '}
-          {WEB
+          {HOME_APP
+            ? "poi tocca «Scansiona QR» qui e fotografalo: questa app sulla schermata Home ha un'associazione sua, separata dal browser (l'app Fotocamera aprirebbe il browser)."
+            : WEB
             ? "poi inquadralo con l'app Fotocamera del telefono (apre la webapp già associata) o con «Scansiona QR»."
             : 'poi inquadralo con «Scansiona QR».'}{' '}
           Sul PC compare un codice da confermare.
