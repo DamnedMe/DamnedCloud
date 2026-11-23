@@ -38,8 +38,9 @@ android {
             stable {
                 storeFile file(stableKeystore)
                 storePassword signingValue('ANDROID_KEYSTORE_PASSWORD')
-                keyAlias signingValue('ANDROID_KEY_ALIAS')
-                keyPassword signingValue('ANDROID_KEY_PASSWORD')
+                // only the keystore and its password are required: one key, alias 'damnedcloud', same password
+                keyAlias signingValue('ANDROID_KEY_ALIAS') ?: 'damnedcloud'
+                keyPassword signingValue('ANDROID_KEY_PASSWORD') ?: signingValue('ANDROID_KEYSTORE_PASSWORD')
             }
         }
     }

@@ -59,15 +59,24 @@ In CI l'APK viene compilato e allegato alla Release come `DamnedCloud.apk`
 ## Installazione / aggiornamento
 
 `versionName` e `versionCode` vengono dalla `version` di `package.json` (1.2.3 → 10203).
-Android installa un aggiornamento sopra l'app solo se l'APK è firmato con la **stessa chiave**:
-la CI firma con i secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Senza secret usa una chiave di debug nuova a ogni
-build (warning nel log): bisogna disinstallare l'app e rifare l'associazione. Anche il primo
-passaggio alla chiave stabile richiede una disinstallazione.
+### Firma dell'APK
+
+Android installa un aggiornamento sopra l'app solo se l'APK è firmato con la **stessa chiave**
+(altrimenti: «App non installata poiché il pacchetto è in conflitto con un pacchetto esistente»).
+La CI firma con due secret del repository (Settings → Secrets and variables → Actions):
+
+- `ANDROID_KEYSTORE_BASE64`: il `.jks` in base64
+- `ANDROID_KEYSTORE_PASSWORD`: la sua password
+
+`ANDROID_KEY_ALIAS` (default `damnedcloud`) e `ANDROID_KEY_PASSWORD` (default: la password del
+keystore) servono solo per una chiave diversa. `android/signing-cert.sha256` fissa l'impronta del
+certificato: una build su tag `v*` senza secret o firmata con un'altra chiave fallisce invece di
+pubblicare un APK che non si aggiorna. Le build di branch e PR senza secret usano la chiave di debug
+del runner (warning nel log). Il primo passaggio alla chiave stabile richiede una disinstallazione.
 
 ```bash
-# una volta sola; conserva il file e la password (con PKCS12 la password della chiave è la stessa)
-keytool -genkeypair -keystore damnedcloud.jks -alias damnedcloud -keyalg RSA -keysize 4096 -validity 36500
+# solo per sostituire la chiave (poi aggiorna android/signing-cert.sha256; serve disinstallare)
+keytool -genkeypair -keystore damnedcloud.jks -storetype PKCS12 -alias damnedcloud -keyalg RSA -keysize 4096 -validity 36500
 base64 -w0 damnedcloud.jks   # -> secret ANDROID_KEYSTORE_BASE64
 ```
 
