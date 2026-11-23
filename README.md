@@ -59,6 +59,7 @@ In CI l'APK viene compilato e allegato alla Release come `DamnedCloud.apk`
 ## Installazione / aggiornamento
 
 `versionName` e `versionCode` vengono dalla `version` di `package.json` (1.2.3 → 10203).
+
 ### Firma dell'APK
 
 Android installa un aggiornamento sopra l'app solo se l'APK è firmato con la **stessa chiave**
