@@ -92,7 +92,9 @@ jobs:
           # android/signing-cert.sha256 pins it, and a release with another key fails here
           CERT=$("$BT/apksigner" verify --print-certs DamnedCloud.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           echo "Signing certificate SHA-256: $CERT"
-          if [ "$CERT" != "$(tr -d '[:space:]' < android/signing-cert.sha256)" ]; then
+          if [ ! -f android/signing-cert.sha256 ]; then
+            echo "::notice::android/signing-cert.sha256 is missing: commit this fingerprint there to pin the release key"
+          elif [ "$CERT" != "$(tr -d '[:space:]' < android/signing-cert.sha256)" ]; then
             if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
               echo "::error::the APK is not signed with the pinned key (android/signing-cert.sha256): it would not install as an update"
               exit 1

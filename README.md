@@ -69,15 +69,17 @@ La CI firma con due secret del repository (Settings → Secrets and variables �
 - `ANDROID_KEYSTORE_PASSWORD`: la sua password
 
 `ANDROID_KEY_ALIAS` (default `damnedcloud`) e `ANDROID_KEY_PASSWORD` (default: la password del
-keystore) servono solo per una chiave diversa. `android/signing-cert.sha256` fissa l'impronta del
-certificato: una build su tag `v*` senza secret o firmata con un'altra chiave fallisce invece di
-pubblicare un APK che non si aggiorna. Le build di branch e PR senza secret usano la chiave di debug
+keystore) servono solo per una chiave diversa. Una build su tag `v*` senza secret fallisce invece di
+pubblicare un APK che non si aggiorna; le build di branch e PR senza secret usano la chiave di debug
 del runner (warning nel log). Il primo passaggio alla chiave stabile richiede una disinstallazione.
 
+Il passo «Check APK» stampa l'impronta SHA-256 del certificato: scrivila in
+`android/signing-cert.sha256` e da lì in poi una release firmata con un'altra chiave fallisce.
+
 ```bash
-# solo per sostituire la chiave (poi aggiorna android/signing-cert.sha256; serve disinstallare)
-keytool -genkeypair -keystore damnedcloud.jks -storetype PKCS12 -alias damnedcloud -keyalg RSA -keysize 4096 -validity 36500
-base64 -w0 damnedcloud.jks   # -> secret ANDROID_KEYSTORE_BASE64
+# una volta sola; conserva il .jks e la password (password manager): senza, nessun aggiornamento si installa più
+keytool -genkeypair -keystore damnedcloud.jks -storetype PKCS12 -alias damnedcloud -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=DamnedCloud"
+base64 -w0 damnedcloud.jks   # -> secret ANDROID_KEYSTORE_BASE64 (Windows: certutil -encode, poi togli le righe BEGIN/END)
 ```
 
 Per una build locale installabile sopra quella della CI: `ANDROID_KEYSTORE_FILE` (percorso del
