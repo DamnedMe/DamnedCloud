@@ -185,6 +185,46 @@ body {
   min-height: 32px;
 }
 
+/* phone width: the title shrinks (ellipsis), the actions never leave the screen */
+.screen-head .head-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.screen-head .head-title > svg,
+.screen-head .head-title .badge {
+  flex-shrink: 0;
+}
+
+.screen-head .head-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-head .head-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+/* very narrow screen: even the main action ("develop") goes icon only, the title keeps its room */
+@media (max-width: 360px) {
+  .screen-head .btn-label-narrow {
+    display: none;
+  }
+}
+
+/* narrow screen: header buttons show their icon only (title / aria-label keep the name) */
+@media (max-width: 480px) {
+  .screen-head .btn-label {
+    display: none;
+  }
+
+  .screen-head .head-actions button.btn.small {
+    padding: 7px 9px;
+  }
+}
+
 .muted {
   color: var(--text-muted);
   font-size: 12px;
