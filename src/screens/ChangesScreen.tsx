@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, FileDiff, Plus, Minus, Undo2, Loader2, Send, ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight } from 'lucide-react'
+import { RefreshCw, FileDiff, Plus, Minus, Undo2, Loader2, Send, ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, GitCompare } from 'lucide-react'
 import { useRemoteStore, sendConfirmed } from '../lib/store'
 import { useNavStore } from '../lib/nav'
-import { isDeclined, useBridgeRefresh } from './bridgeHelpers'
+import { isDeclined, samePath, useBridgeRefresh } from './bridgeHelpers'
 import { dirOf, fileNameOf, groupChanges } from '../shared/changeGroups'
 import { DiffInspector } from './DiffInspector'
+import { BaseDiffView } from './BaseDiffView'
+import { GROUP_LABELS, LANDSCAPE_PHONE, absPath, useMedia } from './changesShared'
 
 interface PorcelainFile {
   path: string
@@ -35,14 +37,6 @@ const ZONES: { id: Zone; label: string; color: string }[] = [
   { id: 'unstaged', label: 'modifiche', color: 'var(--warning)' }
 ]
 
-// changeGroups labels are the IDE's English i18n keys: the ones its Italian locale translates
-const GROUP_LABELS: Record<string, string> = {
-  Interfaces: 'Interfacce',
-  Configuration: 'Configurazione',
-  Documentation: 'Documentazione',
-  Other: 'Altro'
-}
-
 const keyOf = (row: Row) => `${row.zone}:${row.path}`
 
 function buildRows(p: Porcelain): Row[] {
@@ -62,12 +56,6 @@ function statusLetter(row: Row): { ch: string; color: string } {
   return { ch: 'M', color: 'var(--warning)' }
 }
 
-/** `rel` (porcelain, '/') under `root`, with the separator of `root`. */
-function absPath(root: string, rel: string): string {
-  const s = root.includes('\\') ? '\\' : '/'
-  return `${root.replace(/[\\/]+$/, '')}${s}${rel.split('/').join(s)}`
-}
-
 const MAX_NEW_FILE_LINES = 2000
 
 /** An untracked file has no git diff: show its whole content as added lines. */
@@ -78,21 +66,6 @@ function newFileDiff(content: string): string {
   const shown = lines.slice(0, MAX_NEW_FILE_LINES).map((line) => `+${line}`)
   if (lines.length > MAX_NEW_FILE_LINES) shown.push(`… altre ${lines.length - MAX_NEW_FILE_LINES} righe`)
   return [`@@ -0,0 +1,${lines.length} @@ nuovo file`, ...shown].join('\n')
-}
-
-/** Phone held sideways: little height, the selected change gets the whole screen. */
-const LANDSCAPE_PHONE = '(orientation: landscape) and (max-height: 600px)'
-
-function useMedia(query: string): boolean {
-  const [on, setOn] = useState(() => window.matchMedia(query).matches)
-  useEffect(() => {
-    const mq = window.matchMedia(query)
-    const onChange = () => setOn(mq.matches)
-    onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [query])
-  return on
 }
 
 export function ChangesScreen() {
@@ -113,6 +86,10 @@ export function ChangesScreen() {
   const landscape = useMedia(LANDSCAPE_PHONE)
 
   const repoPath = workspace?.selectedWorktree || workspace?.repoPath || null
+  // "diff con develop" as on the desktop: a linked worktree, not the main checkout
+  const comparable = !!workspace?.selectedWorktree && !samePath(workspace.selectedWorktree, workspace.repoPath)
+  /** the worktree whose comparison with its base replaces the pending changes */
+  const [comparing, setComparing] = useState<string | null>(null)
   const selectedRow = rows.find((r) => keyOf(r) === selected) ?? null
   const zones = useMemo(
     () => ZONES.map((z) => ({ ...z, groups: groupChanges(rows.filter((r) => r.zone === z.id)) })).filter((z) => z.groups.length > 0),
@@ -140,6 +117,11 @@ export function ChangesScreen() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // another worktree selected: its Changes show the pending changes again
+  useEffect(() => {
+    if (comparing && !samePath(comparing, repoPath)) setComparing(null)
+  }, [comparing, repoPath])
 
   useBridgeRefresh(['git.changed', 'fs.changed'], [repoPath, workspace?.repoPath], () => void load(true))
 
@@ -229,6 +211,10 @@ export function ChangesScreen() {
     return <div className="empty-state">Apri un repository dalla sezione Worktree.</div>
   }
 
+  if (comparing && comparable && samePath(comparing, repoPath)) {
+    return <BaseDiffView worktreePath={comparing} onClose={() => setComparing(null)} />
+  }
+
   const inspector = selectedRow && (
     <div ref={inspectorRef} className={landscape ? 'inspector-wrap fill' : 'inspector-wrap'}>
       <DiffInspector
@@ -255,6 +241,11 @@ export function ChangesScreen() {
           <span className="badge">{rows.length}</span>
         </div>
         <div className="row">
+          {comparable && (
+            <button className="btn small" onClick={() => setComparing(repoPath)} title="diff con develop: commit e modifiche del branch, come nella PR">
+              <GitCompare size={13} /> develop
+            </button>
+          )}
           <button className="btn small" onClick={() => void sync('pull')} disabled={syncing !== null} title="pull">
             {syncing === 'pull' ? <Loader2 size={13} className="spinner" /> : <ArrowDownToLine size={13} />} pull
           </button>

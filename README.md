@@ -9,6 +9,9 @@ vedere e comandare da telefono, con una UI pensata per il mobile:
 - **Modifiche** — zone staged / modifiche raggruppate per tipo come nell'IDE (Controller, Service, DB, …),
   stage/unstage, commit, discard; inspector del diff unificato o affiancato con zoom, a tutto schermo
   col telefono in orizzontale; « editor » apre il file alla riga toccata (o alla prima modifica)
+- **Diff con develop** — su un worktree, « develop » in Modifiche mostra come nell'IDE tutte le modifiche
+  del branch da quando è partito da develop (o dal branch padre, se impilato): commit già pushati e
+  modifiche in sospeso sommati per file, come nella PR; sola lettura (richiede DamnedIDE con `worktree.baseDiff`)
 - **Rilascio** — il pannello Rilascio dell'IDE (Azure DevOps): develop → qa, qa → prod o la catena
   develop → qa → prod per BE/FE, con branch, commit e work item da includere; le catene in corso
   si seguono e si annullano dal telefono (richiede DamnedIDE con il rilascio remoto)
