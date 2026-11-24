@@ -6,7 +6,7 @@ import { isDeclined, samePath, useBridgeRefresh } from './bridgeHelpers'
 import { dirOf, fileNameOf, groupChanges } from '../shared/changeGroups'
 import { DiffInspector } from './DiffInspector'
 import { BaseDiffView } from './BaseDiffView'
-import { GROUP_LABELS, LANDSCAPE_PHONE, absPath, useMedia } from './changesShared'
+import { GROUP_LABELS, LANDSCAPE_PHONE, WIDE, absPath, useMedia } from './changesShared'
 
 interface PorcelainFile {
   path: string
@@ -82,7 +82,6 @@ export function ChangesScreen() {
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const diffFor = useRef<string | null>(null)
-  const inspectorRef = useRef<HTMLDivElement>(null)
   const landscape = useMedia(LANDSCAPE_PHONE)
 
   const repoPath = workspace?.selectedWorktree || workspace?.repoPath || null
@@ -141,10 +140,9 @@ export function ChangesScreen() {
     }
   }
 
-  // portrait: the inspector sits under the list, bring it into view once it opens
-  useEffect(() => {
-    if (selected && !landscape) inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [selected, landscape])
+  // wide screen: list and inspector side by side; phone portrait: inspector docked on top, list below
+  const wide = useMedia(WIDE)
+  const split = !!selectedRow && !landscape && !wide
 
   const closeDiff = () => {
     diffFor.current = null
@@ -216,14 +214,15 @@ export function ChangesScreen() {
   }
 
   const inspector = selectedRow && (
-    <div ref={inspectorRef} className={landscape ? 'inspector-wrap fill' : 'inspector-wrap'}>
+    <div className={landscape || split ? 'inspector-wrap fill' : 'inspector-wrap'}>
       <DiffInspector
         path={selectedRow.path}
         text={diff}
         // a nested repository (trailing '/') or a deleted file has nothing to open
         editable={selectedRow.changeType !== 'delete' && !selectedRow.path.endsWith('/')}
         file={absPath(repoPath, selectedRow.path)}
-        fill={landscape}
+        fill={landscape || split}
+        docked={split}
         onClose={closeDiff}
         onOpenEditor={(line) => openInEditor(absPath(repoPath, selectedRow.path), line)}
       />
@@ -233,7 +232,7 @@ export function ChangesScreen() {
   // landscape phone: straight to the inspector of the selected change
   if (landscape && inspector) return inspector
 
-  return (
+  const head = (
     <>
       <div className="screen-head">
         <div className="row head-title">
@@ -261,93 +260,118 @@ export function ChangesScreen() {
 
       {error && <div className="error-banner">{error}</div>}
       {notice && <div className="changes-notice">{notice}</div>}
+    </>
+  )
+
+  const list = (
+    <div className="changes-list">
+      {zones.map((zone) => (
+        <section key={zone.id} className="zone">
+          <div className="zone-head" style={{ color: zone.color }}>
+            {zone.label}
+            <span className="count">{zone.groups.reduce((n, g) => n + g.files.length, 0)}</span>
+          </div>
+          {zone.groups.map((group) => {
+            const groupKey = `${zone.id}:${group.id}`
+            const open = !collapsed.has(groupKey)
+            return (
+              <div key={group.id} className="group">
+                <button className="group-head" onClick={() => toggleGroup(groupKey)} aria-expanded={open}>
+                  {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  <span className="label">{GROUP_LABELS[group.label] ?? group.label}</span>
+                  <span className="count">{group.files.length}</span>
+                </button>
+                {open && group.files.map((row) => {
+                  const { ch, color } = statusLetter(row)
+                  const dir = dirOf(row.path)
+                  const active = selected === keyOf(row)
+                  return (
+                    <div
+                      key={keyOf(row)}
+                      role="button"
+                      tabIndex={0}
+                      aria-current={active || undefined}
+                      className={`change-row${active ? ' active' : ''}`}
+                      onClick={() => void openDiff(row)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+                        e.preventDefault()
+                        void openDiff(row)
+                      }}
+                    >
+                      <span className="status" style={{ color }}>{ch}</span>
+                      <span className="file-title">
+                        <span className="name">{fileNameOf(row.path)}</span>
+                        {/* cut from the start, the deepest folder stays visible: rtl moves the ellipsis, bdi keeps the text ltr */}
+                        {dir && <span className="dir"><bdi>{dir}</bdi></span>}
+                      </span>
+                      {row.zone !== 'conflict' && (
+                        <button
+                          className={`icon-btn ${row.zone === 'staged' ? 'ok' : 'warn'}`}
+                          onClick={(e) => { e.stopPropagation(); void stageToggle(row) }}
+                          aria-label={row.zone === 'staged' ? 'unstage' : 'stage'}
+                        >
+                          {row.zone === 'staged' ? <Minus size={14} /> : <Plus size={14} />}
+                        </button>
+                      )}
+                      {/* a conflict is solved by editing and staging the file, not by discarding it */}
+                      {row.zone !== 'conflict' && (
+                        <button
+                          className="icon-btn danger"
+                          onClick={(e) => { e.stopPropagation(); void discard(row) }}
+                          aria-label={row.untracked ? 'elimina file nuovo' : 'scarta'}
+                        >
+                          <Undo2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </section>
+      ))}
+      {!loading && rows.length === 0 && <div className="empty-state">nessuna modifica</div>}
+    </div>
+  )
+
+  const commitCard = stagedCount > 0 && (
+    <div className="card">
+      <label className="field">
+        Messaggio di commit
+        <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="#123 : descrizione" />
+      </label>
+      <button className="btn primary" onClick={() => void commit()} disabled={!message.trim()}>
+        <Send size={15} /> commit · {stagedCount} file
+      </button>
+    </div>
+  )
+
+  // phone portrait with a change open: the inspector stays docked on top, the list scrolls below it
+  if (split) {
+    return (
+      <div className="changes-split">
+        {head}
+        <div className="split-top">{inspector}</div>
+        <div className="split-bottom">
+          {list}
+          {commitCard}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {head}
 
       <div className="changes-layout">
-        <div className="changes-list">
-          {zones.map((zone) => (
-            <section key={zone.id} className="zone">
-              <div className="zone-head" style={{ color: zone.color }}>
-                {zone.label}
-                <span className="count">{zone.groups.reduce((n, g) => n + g.files.length, 0)}</span>
-              </div>
-              {zone.groups.map((group) => {
-                const groupKey = `${zone.id}:${group.id}`
-                const open = !collapsed.has(groupKey)
-                return (
-                  <div key={group.id} className="group">
-                    <button className="group-head" onClick={() => toggleGroup(groupKey)} aria-expanded={open}>
-                      {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      <span className="label">{GROUP_LABELS[group.label] ?? group.label}</span>
-                      <span className="count">{group.files.length}</span>
-                    </button>
-                    {open && group.files.map((row) => {
-                      const { ch, color } = statusLetter(row)
-                      const dir = dirOf(row.path)
-                      const active = selected === keyOf(row)
-                      return (
-                        <div
-                          key={keyOf(row)}
-                          role="button"
-                          tabIndex={0}
-                          aria-current={active || undefined}
-                          className={`change-row${active ? ' active' : ''}`}
-                          onClick={() => void openDiff(row)}
-                          onKeyDown={(e) => {
-                            if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
-                            e.preventDefault()
-                            void openDiff(row)
-                          }}
-                        >
-                          <span className="status" style={{ color }}>{ch}</span>
-                          <span className="file-title">
-                            <span className="name">{fileNameOf(row.path)}</span>
-                            {/* cut from the start, the deepest folder stays visible: rtl moves the ellipsis, bdi keeps the text ltr */}
-                            {dir && <span className="dir"><bdi>{dir}</bdi></span>}
-                          </span>
-                          {row.zone !== 'conflict' && (
-                            <button
-                              className={`icon-btn ${row.zone === 'staged' ? 'ok' : 'warn'}`}
-                              onClick={(e) => { e.stopPropagation(); void stageToggle(row) }}
-                              aria-label={row.zone === 'staged' ? 'unstage' : 'stage'}
-                            >
-                              {row.zone === 'staged' ? <Minus size={14} /> : <Plus size={14} />}
-                            </button>
-                          )}
-                          {/* a conflict is solved by editing and staging the file, not by discarding it */}
-                          {row.zone !== 'conflict' && (
-                            <button
-                              className="icon-btn danger"
-                              onClick={(e) => { e.stopPropagation(); void discard(row) }}
-                              aria-label={row.untracked ? 'elimina file nuovo' : 'scarta'}
-                            >
-                              <Undo2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })}
-            </section>
-          ))}
-          {!loading && rows.length === 0 && <div className="empty-state">nessuna modifica</div>}
-        </div>
-
+        {list}
         {inspector}
       </div>
 
-      {stagedCount > 0 && (
-        <div className="card">
-          <label className="field">
-            Messaggio di commit
-            <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="#123 : descrizione" />
-          </label>
-          <button className="btn primary" onClick={() => void commit()} disabled={!message.trim()}>
-            <Send size={15} /> commit · {stagedCount} file
-          </button>
-        </div>
-      )}
+      {commitCard}
     </>
   )
 }

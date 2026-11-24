@@ -1565,3 +1565,33 @@ button.btn.caution {
     padding: 7px 9px;
   }
 }
+
+/* phone portrait with a change open: inspector docked on top, the list scrolls in its own box below */
+.changes-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.changes-split .split-top {
+  flex: var(--split-top, 2) 1 0;
+  min-height: 0;
+  display: flex;
+}
+
+.changes-split .split-bottom {
+  flex: var(--split-bottom, 1) 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.changes-split .split-top .inspector-wrap {
+  flex: 1;
+  min-width: 0;
+}
