@@ -216,7 +216,9 @@ body {
 
 /* narrow screen: header buttons show their icon only (title / aria-label keep the name) */
 @media (max-width: 480px) {
-  .screen-head .btn-label {
+  .screen-head .btn-label,
+  .editor-card .btn-label,
+  .inspector-tools .btn-label {
     display: none;
   }
 
@@ -995,6 +997,99 @@ textarea.code {
   overflow: auto;
 }
 
+/* ─── rendered Markdown (as the IDE's MarkdownView, src/styles/global.css) ──── */
+
+.md-view {
+  padding: 14px 16px;
+  font-family: var(--font);
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--bg-elev);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* the diff inspector: the diff's own scroll box holds it */
+.md-view.md-inspector {
+  min-height: 100%;
+}
+
+/* the editor: takes the textarea's place and scrolls on its own */
+.md-view.md-editor {
+  flex: 1;
+  min-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-view > :first-child { margin-top: 0; }
+.md-view h1, .md-view h2, .md-view h3, .md-view h4, .md-view h5, .md-view h6 {
+  margin: 18px 0 8px;
+  line-height: 1.3;
+  color: var(--text);
+}
+.md-view h1 { font-size: 1.63em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.md-view h2 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md-view h3 { font-size: 1.22em; }
+.md-view h4 { font-size: 1.11em; }
+.md-view h5, .md-view h6 { font-size: 1em; }
+.md-view p { margin: 8px 0; }
+.md-view a, .md-view .md-link { color: var(--accent); text-decoration: none; }
+.md-view del { color: var(--text-muted); }
+.md-view code {
+  font-family: var(--mono);
+  font-size: 0.89em;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.md-view pre {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  overflow: auto;
+  margin: 10px 0;
+  overflow-wrap: normal;
+}
+.md-view pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 1em;
+  line-height: 1.5;
+}
+.md-view ul, .md-view ol { margin: 8px 0; padding-left: 24px; }
+.md-view li { margin: 3px 0; }
+.md-view blockquote {
+  margin: 10px 0;
+  padding: 4px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-dim);
+}
+.md-view blockquote p { margin: 4px 0; }
+.md-view .md-table { overflow-x: auto; margin: 10px 0; }
+.md-view table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 0.89em;
+  overflow-wrap: normal;
+}
+.md-view th, .md-view td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.md-view th { background: var(--bg-elev-2); color: var(--text-dim); }
+.md-view hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.md-view .md-empty { color: var(--text-muted); }
+
 /* ─── Rilascio (as the IDE's Release panel) ───────────────────────────── */
 
 /* text segments spread over the card: stage and BE / FE */
@@ -1453,4 +1548,20 @@ button.btn.caution {
 }
 .update-banner span {
   flex: 1;
+}
+
+/* the editor's file bar: the name shrinks (ellipsis), preview and save stay on screen */
+.editor-card > .row.between > .row:first-child {
+  flex: 1 1 auto;
+}
+
+.editor-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+@media (max-width: 480px) {
+  .editor-actions button.btn.small {
+    padding: 7px 9px;
+  }
 }

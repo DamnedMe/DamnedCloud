@@ -222,6 +222,7 @@ export function ChangesScreen() {
         text={diff}
         // a nested repository (trailing '/') or a deleted file has nothing to open
         editable={selectedRow.changeType !== 'delete' && !selectedRow.path.endsWith('/')}
+        file={absPath(repoPath, selectedRow.path)}
         fill={landscape}
         onClose={closeDiff}
         onOpenEditor={(line) => openInEditor(absPath(repoPath, selectedRow.path), line)}
