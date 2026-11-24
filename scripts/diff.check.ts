@@ -1,6 +1,6 @@
 // node --experimental-strip-types scripts/diff.check.ts
 import assert from 'node:assert/strict'
-import { firstChangeTarget, parseDiff, toSplitRows } from '../src/lib/diff.ts'
+import { firstChangeTarget, parseDiff, toSplitRows, unifiedDiff } from '../src/lib/diff.ts'
 
 const diff = [
   'diff --git a/src/A.cs b/src/A.cs',
@@ -57,5 +57,51 @@ assert.deepEqual(parseDiff('@@ -0,0 +1,2 @@ nuovo file\n+a\n+b').map((l) => l.ne
 // no hunk: binary file or error text, shown raw by the inspector
 assert.deepEqual(parseDiff('// file binario'), [])
 assert.equal(firstChangeTarget([]), 1)
+
+// ── unifiedDiff: base side vs worktree, for the "diff con develop" view ──
+assert.equal(unifiedDiff('a\nb\n', 'a\nb\n'), '', 'same text: nothing')
+assert.equal(unifiedDiff('a\r\nb\r\n', 'a\nb\n'), '', 'line endings alone are not a change')
+assert.equal(unifiedDiff('', 'x\ny\n'), '@@ -0,0 +1,2 @@\n+x\n+y', 'new file')
+assert.equal(unifiedDiff('x\ny\n', ''), '@@ -1,2 +0,0 @@\n-x\n-y', 'deleted file')
+assert.equal(unifiedDiff('a\0', 'b\0'), '// file binario')
+const base = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`)
+const edited = [...base]
+edited[1] = 'changed 2'
+edited.splice(15, 1)
+edited.push('added 21')
+assert.equal(unifiedDiff(base.join('\n'), edited.join('\n')), [
+  '@@ -1,5 +1,5 @@', ' line 1', '-line 2', '+changed 2', ' line 3', ' line 4', ' line 5',
+  '@@ -13,8 +13,8 @@', ' line 13', ' line 14', ' line 15', '-line 16', ' line 17', ' line 18', ' line 19', ' line 20', '+added 21'
+].join('\n'), 'two hunks, git numbering; changes 6 apart share one')
+const parsed = parseDiff(unifiedDiff(base.join('\n'), edited.join('\n')))
+assert.deepEqual(parsed.find((l) => l.kind === 'add')?.new, 2)
+
+// random edits: applying the diff to the original gives back the modified text, with the fewest changes
+let seed = 7
+const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n }
+function apply(original: string[], diff: string): string[] {
+  const out: string[] = []
+  let at = 0
+  for (const line of diff.split('\n')) {
+    const h = /^@@ -(\d+),(\d+) /.exec(line)
+    if (h) { const start = Number(h[2]) ? Number(h[1]) - 1 : Number(h[1]); while (at < start) out.push(original[at++]); continue }
+    if (line[0] === '+') out.push(line.slice(1))
+    else if (line[0] === '-') { assert.equal(original[at], line.slice(1)); at++ }
+    else if (line[0] === ' ') { assert.equal(original[at], line.slice(1)); out.push(original[at++]) }
+  }
+  while (at < original.length) out.push(original[at++])
+  return out
+}
+for (let round = 0; round < 300; round++) {
+  const a = Array.from({ length: rnd(40) }, () => `l${rnd(8)}`)
+  const b = [...a]
+  for (let e = rnd(6); e > 0; e--) {
+    const p = rnd(b.length + 1)
+    if (rnd(2) && b.length) b.splice(p, 1)
+    else b.splice(p, 0, `n${rnd(8)}`)
+  }
+  const d = unifiedDiff(a.join('\n'), b.join('\n'), rnd(4))
+  assert.deepEqual(apply(a, d), b, `round ${round}`)
+}
 
 console.log('diff.check ok')
