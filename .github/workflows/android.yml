@@ -4,6 +4,8 @@ on:
   push:
     branches: [main, develop]
     tags: ['v*']
+    # a landing page or README change does not need a new APK (tag pushes ignore this filter)
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
@@ -11,12 +13,50 @@ on:
 permissions:
   contents: write
 
+# every push to main publishes the next release: two merges close together must not compute the same tag
+concurrency:
+  group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'release' || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # The release version: a pushed tag vX.Y.Z is used as is; a push to main (a merged PR) publishes the
+      # next patch after the highest v* tag, or package.json's version when it was raised above it by hand
+      # (0.2.0 starts a new minor). Other builds keep package.json's version.
+      - name: Resolve version
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          RELEASE=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            RELEASE=true
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            git fetch --tags --force --quiet origin
+            LAST=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -V | tail -n1)
+            if [ -z "$LAST" ]; then
+              VERSION="$PKG"
+            else
+              IFS=. read -r MA MI PA <<< "$LAST"
+              VERSION="$MA.$MI.$((PA + 1))"
+              # package.json raised by hand above the last release wins
+              if [ "$(printf '%s\n%s\n' "$VERSION" "$PKG" | sort -V | tail -n1)" = "$PKG" ]; then VERSION="$PKG"; fi
+            fi
+            if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+              echo "::error::tag v$VERSION already exists"
+              exit 1
+            fi
+            RELEASE=true
+          else
+            VERSION="$PKG"
+          fi
+          echo "Version: $VERSION (release: $RELEASE)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -43,6 +83,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # versionName/versionCode (android/app/build.gradle) and the version shown in Settings both read
+      # package.json: set it in this checkout only, so the APK carries the release's version
+      - name: Apply version
+        run: npm pkg set version="$VERSION"
+
       - name: Build web assets
         run: npm run build
 
@@ -58,7 +103,7 @@ jobs:
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             # a release signed with a throwaway key is refused as an update ("package conflicts with an
             # existing package"): never publish one
-            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [ "$RELEASE" = true ]; then
               echo "::error::ANDROID_KEYSTORE_BASE64 is not set: a release APK must be signed with the stable key (see README, Firma dell'APK)."
               exit 1
             fi
@@ -95,7 +140,7 @@ jobs:
           if [ ! -f android/signing-cert.sha256 ]; then
             echo "::notice::android/signing-cert.sha256 is missing: commit this fingerprint there to pin the release key"
           elif [ "$CERT" != "$(tr -d '[:space:]' < android/signing-cert.sha256)" ]; then
-            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [ "$RELEASE" = true ]; then
               echo "::error::the APK is not signed with the pinned key (android/signing-cert.sha256): it would not install as an update"
               exit 1
             fi
@@ -108,8 +153,14 @@ jobs:
           name: DamnedCloud
           path: DamnedCloud.apk
 
-      - name: Attach APK to release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # creates the tag vX.Y.Z on this commit and the release when they do not exist yet (push to main).
+      # A tag or release made with GITHUB_TOKEN starts no workflow, so nothing builds the APK twice.
+      - name: Publish release
+        if: env.RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           files: DamnedCloud.apk

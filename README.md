@@ -59,6 +59,12 @@ npm run android:apk   # -> android/app/build/outputs/apk/debug/app-debug.apk
 In CI l'APK viene compilato e allegato alla Release come `DamnedCloud.apk`
 (workflow `.github/workflows/android.yml`).
 
+Ogni merge su `main` pubblica da solo la release successiva: il workflow crea il tag `vX.Y.Z`
+(patch +1 rispetto all'ultimo tag `v*`), compila l'APK firmato con quella versione e lo allega.
+Per passare a una minor/major basta alzare `version` in `package.json` (es. `0.2.0`): se è più alta
+dell'ultimo tag viene usata quella. Un tag `v*` creato a mano funziona ancora come prima. I merge che
+toccano solo `docs/` o file `.md` non producono una release.
+
 ## Installazione / aggiornamento
 
 `versionName` e `versionCode` vengono dalla `version` di `package.json` (1.2.3 → 10203).
