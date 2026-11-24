@@ -5,6 +5,7 @@ import { useNavStore } from '../lib/nav'
 import { isDeclined, samePath, useBridgeRefresh } from './bridgeHelpers'
 import { dirOf, fileNameOf, groupChanges } from '../shared/changeGroups'
 import { DiffInspector } from './DiffInspector'
+import { SplitHandle, useSplitFraction } from '../components/SplitHandle'
 import { BaseDiffView } from './BaseDiffView'
 import { GROUP_LABELS, LANDSCAPE_PHONE, WIDE, absPath, useMedia } from './changesShared'
 
@@ -143,6 +144,8 @@ export function ChangesScreen() {
   // wide screen: list and inspector side by side; phone portrait: inspector docked on top, list below
   const wide = useMedia(WIDE)
   const split = !!selectedRow && !landscape && !wide
+  const [fraction, setFraction] = useSplitFraction()
+  const splitArea = useRef<HTMLDivElement>(null)
 
   const closeDiff = () => {
     diffFor.current = null
@@ -353,10 +356,13 @@ export function ChangesScreen() {
     return (
       <div className="changes-split">
         {head}
-        <div className="split-top">{inspector}</div>
-        <div className="split-bottom">
-          {list}
-          {commitCard}
+        <div ref={splitArea} className="split-area">
+          <div className="split-top" style={{ flexGrow: fraction }}>{inspector}</div>
+          <SplitHandle area={splitArea} fraction={fraction} onChange={setFraction} />
+          <div className="split-bottom" style={{ flexGrow: 1 - fraction }}>
+            {list}
+            {commitCard}
+          </div>
         </div>
       </div>
     )
