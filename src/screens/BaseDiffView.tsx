@@ -117,6 +117,7 @@ export function BaseDiffView({ worktreePath, onClose }: Props) {
         path={selectedFile.path}
         text={diff}
         editable={selectedFile.status !== 'D'}
+        file={absPath(worktreePath, selectedFile.path)}
         fill={landscape}
         onClose={closeDiff}
         onOpenEditor={(line) => openInEditor(absPath(worktreePath, selectedFile.path), line)}

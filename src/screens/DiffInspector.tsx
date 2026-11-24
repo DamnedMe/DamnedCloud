@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ArrowLeft, Columns2, FilePenLine, Loader2, Rows2, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ArrowLeft, Columns2, Eye, FilePenLine, Loader2, Rows2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { firstChangeTarget, parseDiff, toSplitRows, type DiffLine } from '../lib/diff'
 import { dirOf, fileNameOf } from '../shared/changeGroups'
+import { useRemoteStore } from '../lib/store'
+import { MarkdownView, isMarkdown } from '../components/MarkdownView'
 
 const PREFS_KEY = 'damnedcloud.diff'
 const FONT_MIN = 8
@@ -42,19 +44,38 @@ interface Props {
   text: string | null
   /** the file exists in the worktree (not a deletion): the editor can open it */
   editable: boolean
+  /** absolute path in the worktree: read for the rendered preview of a .md file */
+  file: string
   /** landscape phone: the inspector takes the whole screen, with a back arrow */
   fill: boolean
   onClose: () => void
   onOpenEditor: (line: number) => void
 }
 
-export function DiffInspector({ path, text, editable, fill, onClose, onOpenEditor }: Props) {
+export function DiffInspector({ path, text, editable, file, fill, onClose, onOpenEditor }: Props) {
+  const send = useRemoteStore((s) => s.send)
   const [prefs, setPrefs] = useState(loadPrefs)
   const [picked, setPicked] = useState<DiffLine | null>(null)
   const lines = useMemo(() => (text ? parseDiff(text) : []), [text])
   const splitRows = useMemo(() => (prefs.split ? toSplitRows(lines) : []), [lines, prefs.split])
 
   useEffect(() => setPicked(null), [text])
+
+  // .md: the file as it is now in the worktree, rendered (as the IDE's "preview")
+  const [preview, setPreview] = useState(false)
+  // tagged with its file: a bridge refresh keeps the old text on screen until the new one lands
+  const [md, setMd] = useState<{ file: string; content: string } | null>(null)
+  const canPreview = isMarkdown(path) && editable
+  const showPreview = canPreview && preview
+  useEffect(() => {
+    if (!showPreview || text === null) return
+    let live = true
+    // the diff text changes when the file does: read it again with it
+    send<{ content: string }>('fs.read', { file })
+      .then((r) => { if (live) setMd({ file, content: r.content }) })
+      .catch((e: Error) => { if (live) setMd({ file, content: `> ${e.message}` }) })
+    return () => { live = false }
+  }, [showPreview, file, text, send])
 
   const update = (patch: Partial<Prefs>) => {
     const next = { ...prefs, ...patch }
@@ -78,7 +99,12 @@ export function DiffInspector({ path, text, editable, fill, onClose, onOpenEdito
   )
 
   let body
-  if (text === null) {
+  if (showPreview) {
+    // the zoom works here too: 12 (the diff's default) is the preview's 13.5
+    body = md?.file === file
+      ? <MarkdownView content={md.content} className="md-inspector" style={{ fontSize: (prefs.fontSize * 13.5) / 12 }} />
+      : <div className="diff-empty"><Loader2 size={16} className="spinner" /></div>
+  } else if (text === null) {
     body = <div className="diff-empty"><Loader2 size={16} className="spinner" /></div>
   } else if (lines.length === 0) {
     // binary file, error, nothing to show: the bridge text as it is
@@ -130,12 +156,17 @@ export function DiffInspector({ path, text, editable, fill, onClose, onOpenEdito
       </div>
       <div className="inspector-tools">
         <div className="seg" role="group" aria-label="vista del diff">
-          <button className={prefs.split ? '' : 'on'} onClick={() => update({ split: false })} aria-pressed={!prefs.split} title="unificata">
+          <button className={prefs.split || showPreview ? '' : 'on'} onClick={() => { setPreview(false); update({ split: false }) }} aria-pressed={!prefs.split && !showPreview} title="unificata" aria-label="unificata">
             <Rows2 size={14} />
           </button>
-          <button className={prefs.split ? 'on' : ''} onClick={() => update({ split: true })} aria-pressed={prefs.split} title="affiancata">
+          <button className={prefs.split && !showPreview ? 'on' : ''} onClick={() => { setPreview(false); update({ split: true }) }} aria-pressed={prefs.split && !showPreview} title="affiancata" aria-label="affiancata">
             <Columns2 size={14} />
           </button>
+          {canPreview && (
+            <button className={showPreview ? 'on' : ''} onClick={() => setPreview(true)} aria-pressed={showPreview} title="anteprima del markdown" aria-label="anteprima del markdown">
+              <Eye size={14} />
+            </button>
+          )}
         </div>
         <div className="seg" role="group" aria-label="zoom">
           <button onClick={() => update({ fontSize: prefs.fontSize - 1 })} disabled={prefs.fontSize <= FONT_MIN} aria-label="riduci">
@@ -151,8 +182,9 @@ export function DiffInspector({ path, text, editable, fill, onClose, onOpenEdito
           disabled={!editable || text === null}
           onClick={() => onOpenEditor(line)}
           title={editable ? `apri nell'editor alla riga ${line}` : 'file eliminato: niente da aprire'}
+          aria-label={`editor, riga ${line}`}
         >
-          <FilePenLine size={14} /> editor · {line}
+          <FilePenLine size={14} /> <span className="btn-label">editor ·</span> {line}
         </button>
       </div>
       <div className="diff-scroll">{body}</div>

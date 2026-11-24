@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Folder, File as FileIcon, ChevronRight, Save, ArrowLeft, Loader2, Code2, RefreshCw } from 'lucide-react'
+import { Folder, File as FileIcon, ChevronRight, Save, ArrowLeft, Loader2, Code2, RefreshCw, Eye, FileCode2 } from 'lucide-react'
 import { useRemoteStore } from '../lib/store'
 import { useNavStore } from '../lib/nav'
 import { useBridgeRefresh } from './bridgeHelpers'
+import { MarkdownView, isMarkdown } from '../components/MarkdownView'
 
 interface Entry {
   name: string
@@ -50,6 +51,8 @@ export function EditorScreen() {
   const [error, setError] = useState<string | null>(null)
   /** line opened from the diff inspector: scrolled to and highlighted */
   const [mark, setMark] = useState<number | null>(null)
+  /** .md only: the rendered text instead of the textarea (as the IDE's "preview") */
+  const [preview, setPreview] = useState(false)
   // the textarea only speaks \n: the file's own line ending is restored on save
   const eol = useRef<'\n' | '\r\n'>('\n')
   // a read that lands after the user moved on must not fill the buffer of another file
@@ -67,6 +70,7 @@ export function EditorScreen() {
     setOriginal('')
     setFileLoading(false)
     setMark(null)
+    setPreview(false)
   }
 
   useEffect(() => {
@@ -103,6 +107,8 @@ export function EditorScreen() {
     setContent('')
     setOriginal('')
     setMark(line)
+    // opened at a line (from the diff): the source, where that line is
+    setPreview(false)
     setFileLoading(true)
     try {
       const res = await send<{ content: string }>('fs.read', { file: path })
@@ -184,6 +190,8 @@ export function EditorScreen() {
   }
 
   const dirty = content !== original
+  const markdown = isMarkdown(file)
+  const showPreview = markdown && preview && !fileLoading
 
   return (
     <>
@@ -216,26 +224,45 @@ export function EditorScreen() {
                 {mark && <span className="dir">riga {mark}</span>}
               </span>
             </div>
-            <button className="btn small primary" onClick={() => void save()} disabled={fileLoading || !dirty}>
-              <Save size={13} /> salva
-            </button>
+            <div className="row editor-actions">
+              {markdown && (
+                <button
+                  className={`btn small${preview ? ' on' : ''}`}
+                  onClick={() => setPreview((p) => !p)}
+                  disabled={fileLoading}
+                  aria-pressed={preview}
+                  aria-label={preview ? 'mostra il sorgente' : 'anteprima del markdown'}
+                  title={preview ? 'mostra il sorgente' : 'anteprima del markdown'}
+                >
+                  {preview ? <FileCode2 size={13} /> : <Eye size={13} />}
+                  <span className="btn-label">{preview ? 'sorgente' : 'anteprima'}</span>
+                </button>
+              )}
+              <button className="btn small primary" onClick={() => void save()} disabled={fileLoading || !dirty} aria-label="salva" title="salva">
+                <Save size={13} /> <span className="btn-label">salva</span>
+              </button>
+            </div>
           </div>
-          <div className="code-wrap">
-            <pre ref={gutterRef} className="gutter" aria-hidden>{gutter}</pre>
-            {mark && !fileLoading && <div ref={bandRef} className="line-band" />}
-            <textarea
-              ref={taRef}
-              className="code"
-              value={content}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              disabled={fileLoading}
-              placeholder={fileLoading ? 'caricamento…' : undefined}
-              onScroll={syncScroll}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </div>
+          {showPreview ? (
+            <MarkdownView content={content} className="md-editor" />
+          ) : (
+            <div className="code-wrap">
+              <pre ref={gutterRef} className="gutter" aria-hidden>{gutter}</pre>
+              {mark && !fileLoading && <div ref={bandRef} className="line-band" />}
+              <textarea
+                ref={taRef}
+                className="code"
+                value={content}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                disabled={fileLoading}
+                placeholder={fileLoading ? 'caricamento…' : undefined}
+                onScroll={syncScroll}
+                onChange={(e) => setContent(e.target.value)}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div className="list">
