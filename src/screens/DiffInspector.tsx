@@ -48,11 +48,14 @@ interface Props {
   file: string
   /** landscape phone: the inspector takes the whole screen, with a back arrow */
   fill: boolean
+  /** fill, but next to the list (split phone layout): close with an X, not a back arrow */
+  docked?: boolean
   onClose: () => void
   onOpenEditor: (line: number) => void
 }
 
-export function DiffInspector({ path, text, editable, file, fill, onClose, onOpenEditor }: Props) {
+export function DiffInspector({ path, text, editable, file, fill, docked = false, onClose, onOpenEditor }: Props) {
+  const back = fill && !docked
   const send = useRemoteStore((s) => s.send)
   const [prefs, setPrefs] = useState(loadPrefs)
   const [picked, setPicked] = useState<DiffLine | null>(null)
@@ -146,8 +149,8 @@ export function DiffInspector({ path, text, editable, file, fill, onClose, onOpe
   return (
     <section className={`inspector${fill ? ' fill' : ''}`} aria-label={`diff di ${path}`}>
       <div className="inspector-head">
-        <button className="icon-btn" onClick={onClose} aria-label={fill ? 'torna alla lista' : 'chiudi diff'}>
-          {fill ? <ArrowLeft size={16} /> : <X size={16} />}
+        <button className="icon-btn" onClick={onClose} aria-label={back ? 'torna alla lista' : 'chiudi diff'}>
+          {back ? <ArrowLeft size={16} /> : <X size={16} />}
         </button>
         <div className="file-title">
           <span className="name">{fileNameOf(path)}</span>

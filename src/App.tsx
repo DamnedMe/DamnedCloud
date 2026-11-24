@@ -159,9 +159,9 @@ export default function App() {
       </div>
       <nav className="tabbar">
         {TABS.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-            <Icon size={19} />
-            {label}
+          // icon only: the label stays as the button's name (screen reader, long-press tooltip)
+          <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-label={label} title={label}>
+            <Icon size={21} />
           </button>
         ))}
       </nav>

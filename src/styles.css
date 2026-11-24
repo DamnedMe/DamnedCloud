@@ -119,16 +119,14 @@ body {
 
 .tabbar button {
   flex: 1;
+  min-width: 0;
   background: none;
   border: none;
   color: var(--text-muted);
-  padding: 8px 4px 10px;
+  padding: 13px 4px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
-  font-family: var(--mono);
-  font-size: 10px;
+  justify-content: center;
   cursor: pointer;
 }
 
@@ -141,11 +139,7 @@ body {
 /* a phone on its side has little height: icon and label on one line */
 @media (orientation: landscape) and (max-height: 600px) {
   .tabbar button {
-    flex-direction: row;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 4px;
-    font-size: 11px;
+    padding: 8px 4px;
   }
 
   .content {
@@ -1564,4 +1558,69 @@ button.btn.caution {
   .editor-actions button.btn.small {
     padding: 7px 9px;
   }
+}
+
+/* phone portrait with a change open: inspector docked on top, the list scrolls in its own box below;
+   the handle between them moves the split (SplitHandle, 2/3 at first) */
+.changes-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.split-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.split-area .split-top {
+  flex: 2 1 0;
+  min-height: 0;
+  display: flex;
+}
+
+.split-area .split-top .inspector-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.split-area .split-bottom {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* a finger-sized bar, the visible pill in the middle */
+.split-handle {
+  flex: none;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  cursor: row-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.split-handle span {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--text-muted);
+  opacity: 0.6;
+}
+
+.split-handle.dragging span,
+.split-handle:focus-visible span {
+  background: var(--accent);
+  opacity: 1;
 }

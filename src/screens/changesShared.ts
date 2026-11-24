@@ -18,6 +18,9 @@ export function absPath(root: string, rel: string): string {
 /** Phone held sideways: little height, the selected change gets the whole screen. */
 export const LANDSCAPE_PHONE = '(orientation: landscape) and (max-height: 600px)'
 
+/** Tablet / wide browser: list and inspector side by side (styles.css, .changes-layout). */
+export const WIDE = '(min-width: 900px)'
+
 export function useMedia(query: string): boolean {
   const [on, setOn] = useState(() => window.matchMedia(query).matches)
   useEffect(() => {
