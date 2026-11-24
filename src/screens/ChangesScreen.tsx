@@ -235,22 +235,22 @@ export function ChangesScreen() {
   return (
     <>
       <div className="screen-head">
-        <div className="row">
+        <div className="row head-title">
           <FileDiff size={16} color="var(--accent)" />
           <strong>Modifiche</strong>
           <span className="badge">{rows.length}</span>
         </div>
-        <div className="row">
+        <div className="row head-actions">
           {comparable && (
-            <button className="btn small" onClick={() => setComparing(repoPath)} title="diff con develop: commit e modifiche del branch, come nella PR">
-              <GitCompare size={13} /> develop
+            <button className="btn small" onClick={() => setComparing(repoPath)} title="diff con develop: commit e modifiche del branch, come nella PR" aria-label="diff con develop">
+              <GitCompare size={13} /> <span className="btn-label-narrow">develop</span>
             </button>
           )}
-          <button className="btn small" onClick={() => void sync('pull')} disabled={syncing !== null} title="pull">
-            {syncing === 'pull' ? <Loader2 size={13} className="spinner" /> : <ArrowDownToLine size={13} />} pull
+          <button className="btn small" onClick={() => void sync('pull')} disabled={syncing !== null} title="pull" aria-label="pull">
+            {syncing === 'pull' ? <Loader2 size={13} className="spinner" /> : <ArrowDownToLine size={13} />} <span className="btn-label">pull</span>
           </button>
-          <button className="btn small" onClick={() => void sync('push')} disabled={syncing !== null} title="push">
-            {syncing === 'push' ? <Loader2 size={13} className="spinner" /> : <ArrowUpFromLine size={13} />} push
+          <button className="btn small" onClick={() => void sync('push')} disabled={syncing !== null} title="push" aria-label="push">
+            {syncing === 'push' ? <Loader2 size={13} className="spinner" /> : <ArrowUpFromLine size={13} />} <span className="btn-label">push</span>
           </button>
           <button className="btn small" onClick={() => void load()} disabled={loading} aria-label="aggiorna">
             {loading ? <Loader2 size={13} className="spinner" /> : <RefreshCw size={13} />}

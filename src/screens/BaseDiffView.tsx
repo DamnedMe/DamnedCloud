@@ -132,17 +132,17 @@ export function BaseDiffView({ worktreePath, onClose }: Props) {
   return (
     <>
       <div className="screen-head">
-        <div className="row" style={{ minWidth: 0 }}>
+        <div className="row head-title">
           <GitCompare size={16} color="var(--accent)" />
           <strong>Diff con {base}</strong>
           {data && <span className="badge">{data.files.length}</span>}
         </div>
-        <div className="row">
+        <div className="row head-actions">
           <button className="btn small" onClick={() => void load()} disabled={loading} aria-label="aggiorna">
             {loading ? <Loader2 size={13} className="spinner" /> : <RefreshCw size={13} />}
           </button>
-          <button className="btn small" onClick={onClose} title="torna alle modifiche in sospeso">
-            <X size={13} /> chiudi
+          <button className="btn small" onClick={onClose} title="torna alle modifiche in sospeso" aria-label="chiudi">
+            <X size={13} /> <span className="btn-label">chiudi</span>
           </button>
         </div>
       </div>
